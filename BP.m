@@ -92,5 +92,20 @@ classdef BP
             V = V * chol(inv(cov(V)))';
         end
         
+        
+        function V = residuals(V, X, W, samples)
+            % R = residuals(V, X, W, samples) computes the residuals by
+            %   subtracting the model prediction X * W from the data V. The
+            %   vector samples specifies how to center the waveforms for
+            %   the convolution.
+            
+            for i = 1 : size(X, 2)
+                spikes = find(X(:, i));
+                for j = 1 : numel(spikes)
+                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - permute(W(:, i, :), [1 3 2]);
+                end
+            end
+        end
+        
     end
 end
