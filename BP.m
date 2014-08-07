@@ -75,21 +75,22 @@ classdef BP
         end
         
         
-        function V = whitenData(V, q)
+        function V = whitenData(V, R, q)
             % V = whitenData(V, q) whitens the data V, assuming that the
             %   spatio-temporal covariance separates into a spatial and a
             %   temporal component.
             
             % temporal whitening
             for i = 1 : size(V, 2)
-                Lt = toeplitz(xcorr(V(:, i), q));
+                Lt = toeplitz(xcorr(R(:, i), q));
                 Lt = Lt(q + 1 : end, 1 : q + 1);
                 w = sqrtm(inv(Lt));
-                V(:, i) = convn(V(:, i), w, 'same');
+                V(:, i) = conv2(V(:, i), w, 'same');
+                R(:, i) = conv2(R(:, i), w, 'same');
             end
             
             % spatial whitening
-            V = V * chol(inv(cov(V)))';
+            V = V * chol(inv(cov(R)))';
         end
         
         
