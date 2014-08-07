@@ -13,6 +13,7 @@ classdef BP
         samples     % samples corresponding to waveform window
         Fs          % sampling rate
         verbose     % verbose output during fitting?
+        tempFiltLen % length of temporal whitening filter (ms)
         N           % # samples
         D           % # dimensions
         K           % # channels
@@ -37,12 +38,14 @@ classdef BP
             p.addOptional('window', [-0.5 1.1]);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
+            p.addOptional('tempFiltLen', 8);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
             self.samples = round(self.window(1) * self.Fs / 1000) : round(self.window(2) * self.Fs / 1000);
             self.D = numel(self.samples);
             self.verbose = p.Results.verbose;
+            self.tempFiltLen = p.Results.tempFiltLen;
         end
         
     end
@@ -69,6 +72,24 @@ classdef BP
                 W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
             end
             W = reshape(W, [D M K]);
+        end
+        
+        
+        function V = whitenData(V, q)
+            % V = whitenData(V, q) whitens the data V, assuming that the
+            %   spatio-temporal covariance separates into a spatial and a
+            %   temporal component.
+            
+            % temporal whitening
+            for i = 1 : size(V, 2)
+                Lt = toeplitz(xcorr(V(:, i), q));
+                Lt = Lt(q + 1 : end, 1 : q + 1);
+                w = sqrtm(inv(Lt));
+                V(:, i) = convn(V(:, i), w, 'same');
+            end
+            
+            % spatial whitening
+            V = V * chol(inv(cov(V)))';
         end
         
     end
