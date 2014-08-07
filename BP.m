@@ -9,10 +9,10 @@
 
 classdef BP
     properties %#ok<*PROP>
-        window
-        Fs
-        samples
-        verbose
+        window      % window for extracting waveform: [a b] ms
+        samples     % samples corresponding to waveform window
+        Fs          % sampling rate
+        verbose     % verbose output during fitting?
         N           % # samples
         D           % # dimensions
         K           % # channels
