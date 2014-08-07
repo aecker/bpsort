@@ -46,4 +46,30 @@ classdef BP
         end
         
     end
+    
+    methods (Static)
+        
+        function W = estimateWaveforms(V, X, samples)
+            % W = estimateWaveforms(V, X, samples) estimates the waveforms
+            %   W given the observed voltage V and spike times X. The
+            %   vector samples specifies which samples relative to the
+            %   spike time should be estimated.
+            
+            [N, K] = size(V);
+            M = size(X, 2);
+            D = numel(samples);
+            W = zeros(M * D, K);
+            for iChan = 1 : K
+                MX = sparse(N, D * M);
+                for iSample = 1 : D
+                    index = (1 : N) + samples(iSample);
+                    valid = index > 0 & index <= N;
+                    MX(index(valid), iSample + (0 : D : end - D)) = X(valid, :); %#ok<SPRIX>
+                end
+                W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
+            end
+            W = reshape(W, [D M K]);
+        end
+        
+    end
 end
