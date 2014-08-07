@@ -14,7 +14,7 @@ classdef BP
         Fs          % sampling rate
         verbose     % verbose output during fitting?
         tempFiltLen % length of temporal whitening filter (ms)
-        N           % # samples
+        T           % # samples
         D           % # dimensions
         K           % # channels
         M           % # clusters
@@ -58,15 +58,15 @@ classdef BP
             %   vector samples specifies which samples relative to the
             %   spike time should be estimated.
             
-            [N, K] = size(V);
+            [T, K] = size(V);
             M = size(X, 2);
             D = numel(samples);
             W = zeros(M * D, K);
             for iChan = 1 : K
-                MX = sparse(N, D * M);
+                MX = sparse(T, D * M);
                 for iSample = 1 : D
-                    index = (1 : N) + samples(iSample);
-                    valid = index > 0 & index <= N;
+                    index = (1 : T) + samples(iSample);
+                    valid = index > 0 & index <= T;
                     MX(index(valid), iSample + (0 : D : end - D)) = X(valid, :); %#ok<SPRIX>
                 end
                 W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
