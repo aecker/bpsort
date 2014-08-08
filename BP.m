@@ -131,5 +131,45 @@ classdef BP
             end
         end
         
+        
+        function Xn = estimateSpikes(V, X, W, samples)
+
+            % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
+            p = sum(X, 1) / size(X, 1);
+            gamma = log(1 - p) - log(p);
+            ww = sum(sum(W .^ 2, 1), 3) / 2;
+            [T, K] = size(V);
+            DL = 0;
+            for i = 1 : K
+                DL = DL + conv2(V(:, i), W(:, :, i));
+            end
+            DL = DL(-samples(1) + (1 : T), :);
+            DL = bsxfun(@minus, DL, gamma + ww);
+            
+            % pre-compute updates to \Delta L needed when flipping X_ij
+            D = numel(samples);
+            s = 2 * samples(1) + (0 : 2 * (D - 1));
+            M = size(X, 2);
+            dDL = zeros(2 * D - 1, M, M);
+            for i = 1 : M
+                for j = 1 : M
+                    for k = 1 : K
+                        dDL(:, i, j) = dDL(:, i, j) + conv(W(:, i, k), W(:, j, k));
+                    end
+                end
+                dDL(~s, i, i) = 0;
+            end
+            
+            % greedy search for flips with largest change in posterior
+            Xn = sparse(T, M);
+            [m, ndx] = max(DL(:));
+            while m > 0
+                [i, j] = ind2sub(size(DL), ndx);
+                Xn(i, j) = ~Xn(i, j); %#ok
+                DL(i, j) = -DL(i, j);
+                DL(i + s, :) = DL(i + s, :) - dDL(:, :, j);
+                [m, ndx] = max(DL(:));
+            end
+        end
     end
 end
