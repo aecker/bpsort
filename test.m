@@ -56,4 +56,8 @@ for i = 1 : M
     spikes{i} = s;
 end
 
-
+X = sparse(N, M);
+for i = 1 : numel(spikes)
+    X(spikes{i}, i) = 1;
+end
+V = v;
