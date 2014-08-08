@@ -48,6 +48,29 @@ classdef BP
             self.tempFiltLen = p.Results.tempFiltLen;
         end
         
+        
+        function self = fit(self, V, X)
+            % bp = bp.fit(V, X0) fits the model to waveforms V using the
+            %   initial spike sorting results X0.
+            %
+            %   V    T-by-K     T: number of time bins
+            %                   K: number of channels
+            %   X0   T-by-M     M: number of clusters
+            %        sparse matrix with ones indicating spikes
+
+            q = round(self.tempFiltLen / 1000 * self.Fs);
+            while ~converged
+                
+                % estimate waveforms, whiten data, re-estimate waveforms
+                W = BP.estimateWaveforms(V, X, self.samples);
+                R = BP.residuals(V, X, W, self.samples);
+                Vw = BP.whitenData(V, R, q);
+                Ww = BP.estimateWaveforms(Vw, X, self.samples);
+                                
+                % estimate spike trains via binary pursuit
+                X = BP.estimateSpikes(Vw, X, Ww, self.samples);
+            end
+        end
     end
     
     methods (Static)
