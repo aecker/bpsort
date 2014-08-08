@@ -45,11 +45,13 @@ rate = exp(randn(M, 1) + 2);
 spikes = cell(1, M);
 for i = 1 : M
     s = find(rand(N, 1) < rate(i) / Fs);
-    prev = 0;
+    viol = diff(s) < refrac / 1000 * Fs;
+    while any(viol)
+        s(viol) = [];
+        viol = diff(s) < refrac / 1000 * Fs;
+    end
     for j = 1 : numel(s)
-        if ~prev || s(j) - s(prev) > refrac / 1000 * Fs;
-            v(s(j) + ndx, :) = v(s(j) + ndx, :) + spike * ampl(i, :);
-        end
+        v(s(j) + ndx, :) = v(s(j) + ndx, :) + spike * ampl(i, :);
     end
     spikes{i} = s;
 end
