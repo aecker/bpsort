@@ -35,10 +35,10 @@ classdef BP
             % parse optional parameters
             p = inputParser;
             p.KeepUnmatched = true;
-            p.addOptional('window', [-0.5 1.1]);
+            p.addOptional('window', [-1 1.5]);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
-            p.addOptional('tempFiltLen', 8);
+            p.addOptional('tempFiltLen', 1.5);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
