@@ -27,10 +27,11 @@ classdef BP
             %   bp = BP('param1', value1, 'param2', value2, ...) constructs
             %   a BP object with the following optional parameters:
             %
-            %   window    1x2 vector specifying the time window (ms) to
-            %             extract waveforms (zero = peak; default [-0.5 1])
-            %   Fs        sampling rate (Hz)
-            %   verbose   true|false
+            %   window       1x2 vector specifying the time window (ms) to
+            %                extract waveforms (peak = 0; default [-0.5 1])
+            %   Fs           sampling rate (Hz)
+            %   verbose      true|false
+            %   tempFiltLen  length of filter for temporal whitening
             
             % parse optional parameters
             p = inputParser;
@@ -133,6 +134,9 @@ classdef BP
         
         
         function Xn = estimateSpikes(V, X, W, samples)
+            % X = estimateSpikes(V, X, W, samples) estimates the spike
+            %   times given the current estimate of the waveforms using
+            %   binary pursuit.
 
             % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
             p = sum(X, 1) / size(X, 1);
