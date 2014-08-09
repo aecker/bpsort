@@ -182,13 +182,13 @@ function [X, DL] = greedy(X, DL, dDL, s, offset, T)
     [m, i, j] = findmax(DL, offset, T);
     if T > Tmax
         % divide & conquer: split at current maximum
-        [X, DL] = update(X, DL, dDL, s, i, j);
+        [X, DL] = flip(X, DL, dDL, s, i, j);
         [X, DL] = greedy(X, DL, dDL, s, offset, i - offset);
         [X, DL] = greedy(X, DL, dDL, s, i, T - i + offset);
     else
         % regular loop greedily searching maximum
         while m > 0
-            [X, DL] = update(X, DL, dDL, s, i, j);
+            [X, DL] = flip(X, DL, dDL, s, i, j);
             [m, i, j] = findmax(DL, offset, T);
         end
     end
@@ -196,13 +196,21 @@ end
 
 
 function [m, i, j] = findmax(DL, offset, T)
+    % [m, i, j] = findmax(DL, offset, T) finds the maximum change of the
+    %   log-posterior (DL) achieved by inserting or removing a spike in the
+    %   interval DL(offset + (1 : T), :) and returns indices i and j.
+    
     [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
     i = offset + rem(ndx - 1, T) + 1;
     j = ceil(ndx / T);
 end
 
 
-function [X, DL] = update(X, DL, dDL, s, i, j)
+function [X, DL] = flip(X, DL, dDL, s, i, j)
+    % [X, DL] = flip(X, DL, dDL, s, i, j) flips X(i, j) - i.e. inserts of
+    %   removes a spike - and updates the expected change in log-posterior
+    %   (DL) by dDL in the affected region s.
+    
     X(i, j) = ~X(i, j);
     DL(i, j) = -DL(i, j);
     DL(i + s, :) = DL(i + s, :) - (2 * X(i, j) - 1) * dDL(:, :, j);
