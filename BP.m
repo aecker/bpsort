@@ -166,13 +166,26 @@ classdef BP
             
             % greedy search for flips with largest change in posterior
             Xn = sparse(T, M);
-            [m, ndx] = max(DL(:));
-            while m > 0
-                [i, j] = ind2sub(size(DL), ndx);
-                Xn(i, j) = ~Xn(i, j); %#ok
-                DL(i, j) = -DL(i, j);
-                DL(i + s, :) = DL(i + s, :) - dDL(:, :, j);
-                [m, ndx] = max(DL(:));
+            [~, order] = sort(DL(:), 'descend');
+            while DL(order(1)) > 0
+                oi = rem(order - 1, T) + 1;
+                oj = ceil(order / T);
+                dirty = false(T, M);
+                dmax = 0;
+                k = 1;
+                while DL(oi(k), oj(k)) > dmax
+                    i = oi(k);
+                    j = oj(k);
+                    if ~dirty(i, j)
+                        Xn(i, j) = ~Xn(i, j); %#ok
+                        DL(i, j) = -DL(i, j);
+                        DL(i + s, :) = DL(i + s, :) - dDL(:, :, j);
+                        dirty(i + s, :) = true;
+                        dmax = max(0, max(max(DL(i + s, :))));
+                    end
+                    k = k + 1;
+                end
+                [~, order] = sort(DL(:), 'descend');
             end
         end
     end
