@@ -171,7 +171,7 @@ classdef BP
                 [i, j] = ind2sub(size(DL), ndx);
                 Xn(i, j) = ~Xn(i, j); %#ok
                 DL(i, j) = -DL(i, j);
-                DL(i + s, :) = DL(i + s, :) - dDL(:, :, j);
+                DL(i + s, :) = DL(i + s, :) - (2 * Xn(i, j) - 1) * dDL(:, :, j);
                 [m, ndx] = max(DL(:));
             end
         end
