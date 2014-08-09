@@ -205,6 +205,6 @@ end
 function [X, DL] = update(X, DL, dDL, s, i, j)
     X(i, j) = ~X(i, j);
     DL(i, j) = -DL(i, j);
-    DL(i + s, :) = DL(i + s, :) - dDL(:, :, j);
+    DL(i + s, :) = DL(i + s, :) - (2 * X(i, j) - 1) * dDL(:, :, j);
 end
 
