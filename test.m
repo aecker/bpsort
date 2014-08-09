@@ -9,7 +9,9 @@ N = T * 60 * Fs;
 Kw = 3;         % size of spatial filter
 rms = 6.5;      % RMS noise in 600-6000 Hz band
 refrac = 2;     % ms refractory period 
+jitter = 10;    % jitter in spike timing (fraction of one sample)
 spike = [0 10 18 10 -25 -60 -35 -11 0 7 10 12 13 13 12 10 7 3 1 0]';
+spikeJit = [zeros(jitter / 2, 1); resample(spike, jitter, 1)];
 D = numel(spike);
 
 % generate 1/f noise
@@ -51,7 +53,8 @@ for i = 1 : M
         viol = diff(s) < refrac / 1000 * Fs;
     end
     for j = 1 : numel(s)
-        v(s(j) + ndx, :) = v(s(j) + ndx, :) + spike * ampl(i, :);
+        start = round(rand(1) * jitter);
+        v(s(j) + ndx, :) = v(s(j) + ndx, :) + spikeJit(start + (1 : jitter : jitter * D)) * ampl(i, :);
     end
     spikes{i} = s;
 end
