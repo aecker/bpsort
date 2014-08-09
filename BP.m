@@ -165,15 +165,46 @@ classdef BP
             end
             
             % greedy search for flips with largest change in posterior
-            Xn = sparse(T, M);
-            [m, ndx] = max(DL(:));
-            while m > 0
-                [i, j] = ind2sub(size(DL), ndx);
-                Xn(i, j) = ~Xn(i, j); %#ok
-                DL(i, j) = -DL(i, j);
-                DL(i + s, :) = DL(i + s, :) - (2 * Xn(i, j) - 1) * dDL(:, :, j);
-                [m, ndx] = max(DL(:));
-            end
+            Xn = greedy(sparse(T, M), DL, dDL, s, 0, T);
         end
     end
 end
+
+
+function [X, DL] = greedy(X, DL, dDL, s, offset, T)
+    % [X, DL] = greedy(X, DL, dDL, offset, T) performs a greedy search for
+    %   flips with largest change in posterior. We use a divide & conquer
+    %   approach, splitting the data at the maximum and recursively
+    %   processing each chunk, thus speeding up the maximum search
+    %   substantially.
+    
+    Tmax = 10000;
+    [m, i, j] = findmax(DL, offset, T);
+    if T > Tmax
+        % divide & conquer: split at current maximum
+        [X, DL] = update(X, DL, dDL, s, i, j);
+        [X, DL] = greedy(X, DL, dDL, s, offset, i - offset);
+        [X, DL] = greedy(X, DL, dDL, s, i, T - i + offset);
+    else
+        % regular loop greedily searching maximum
+        while m > 0
+            [X, DL] = update(X, DL, dDL, s, i, j);
+            [m, i, j] = findmax(DL, offset, T);
+        end
+    end
+end
+
+
+function [m, i, j] = findmax(DL, offset, T)
+    [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
+    i = offset + rem(ndx - 1, T) + 1;
+    j = ceil(ndx / T);
+end
+
+
+function [X, DL] = update(X, DL, dDL, s, i, j)
+    X(i, j) = ~X(i, j);
+    DL(i, j) = -DL(i, j);
+    DL(i + s, :) = DL(i + s, :) - (2 * X(i, j) - 1) * dDL(:, :, j);
+end
+
