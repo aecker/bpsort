@@ -1,7 +1,7 @@
 % Test harness using synthetic data
 
 rng(1)
-T = 2;          % min
+T = 0.5;          % min
 K = 8;          % channels
 M = 6;          % single units
 Fs = 12000;     % Hz
@@ -61,6 +61,17 @@ end
 
 X = sparse(N, M);
 for i = 1 : numel(spikes)
-    X(spikes{i}, i) = 1;
+    X(spikes{i}, i) = 1; %#ok
 end
 V = v;
+
+% run initialized with ground truth
+self = BP('window', [-.4 1.2]);
+q = round(self.tempFiltLen / 1000 * self.Fs);
+W = BP.estimateWaveforms(V, X, self.samples);
+R = BP.residuals(V, X, W, self.samples);
+Vw = BP.whitenData(V, R, q);
+Ww = BP.estimateWaveforms(Vw, X, self.samples);
+Xn = BP.estimateSpikes(Vw, X, Ww, self.samples);
+
+
