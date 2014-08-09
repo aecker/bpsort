@@ -66,7 +66,7 @@ classdef BP
                 R = BP.residuals(V, X, W, self.samples);
                 Vw = BP.whitenData(V, R, q);
                 Ww = BP.estimateWaveforms(Vw, X, self.samples);
-                                
+                
                 % estimate spike trains via binary pursuit
                 X = BP.estimateSpikes(Vw, X, Ww, self.samples);
             end
@@ -141,20 +141,20 @@ classdef BP
             [T, K] = size(V);
             DL = 0;
             for i = 1 : K
-                DL = DL + conv2(V(:, i), W(:, :, i));
+                DL = DL + conv2(V(:, i), flipud(W(:, :, i)));
             end
-            DL = DL(-samples(1) + (1 : T), :);
+            DL = DL(samples(end) + (1 : T), :);
             DL = bsxfun(@minus, DL, gamma + ww);
             
             % pre-compute updates to \Delta L needed when flipping X_ij
             D = numel(samples);
-            s = 2 * samples(1) + (0 : 2 * (D - 1));
+            s = 1 - D : D - 1;
             M = size(X, 2);
             dDL = zeros(2 * D - 1, M, M);
             for i = 1 : M
                 for j = 1 : M
                     for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(W(:, i, k), W(:, j, k));
+                        dDL(:, i, j) = dDL(:, i, j) + conv(W(:, i, k), flipud(W(:, j, k)));
                     end
                 end
                 dDL(~s, i, i) = 0;
