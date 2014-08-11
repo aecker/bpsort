@@ -46,7 +46,7 @@ ampl = conv2(ampl, w', 'same');
 rate = exp(randn(M, 1) + 2);
 spikes = cell(1, M);
 for i = 1 : M
-    s = find(rand(N, 1) < rate(i) / Fs);
+    s = peak + find(rand(N, 1) < rate(i) / Fs);
     s = s + round(rand(size(s)) * jitter) / jitter;
     viol = diff(s) < refrac / 1000 * Fs;
     while any(viol)
