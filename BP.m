@@ -227,13 +227,15 @@ function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
                 sub = sub + up;
             end
             X(i, j) = sub / up;
+            DL(i, j) = -DL(i, j);
+            DL(i + s, :) = DL(i + s, :) - dDL(up - sub + 1 : up : end, :, j);
         else
             % remove spike
             sub = X(i, j) * up;
             X(i, j) = 0;
+            DL(i, j) = -DL(i, j);
+            DL(i + s, :) = DL(i + s, :) + dDL(up - sub + 1 : up : end, :, j);
         end
-        DL(i, j) = -DL(i, j);
-        DL(i + s, :) = DL(i + s, :) - (2 * X(i, j) - 1) * dDL(up - sub + 1 : up : end, :, j);
     else
         i = NaN;
     end
