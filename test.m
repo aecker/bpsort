@@ -72,6 +72,5 @@ W = BP.estimateWaveforms(V, X, self.samples);
 R = BP.residuals(V, X, W, self.samples);
 Vw = BP.whitenData(V, R, q);
 Ww = BP.estimateWaveforms(Vw, X, self.samples);
-Xn = BP.estimateSpikes(Vw, X, Ww, self.samples);
-
+Xn = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
 

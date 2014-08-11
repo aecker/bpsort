@@ -14,6 +14,7 @@ classdef BP
         Fs          % sampling rate
         verbose     % verbose output during fitting?
         tempFiltLen % length of temporal whitening filter (ms)
+        upsampling  % upsampling factor for spike times
         T           % # samples
         D           % # dimensions
         K           % # channels
@@ -40,6 +41,7 @@ classdef BP
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
             p.addOptional('tempFiltLen', 1.5);
+            p.addOptional('upsampling', 5);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -47,6 +49,7 @@ classdef BP
             self.D = numel(self.samples);
             self.verbose = p.Results.verbose;
             self.tempFiltLen = p.Results.tempFiltLen;
+            self.upsampling = p.Results.upsampling;
         end
         
         
@@ -69,7 +72,7 @@ classdef BP
                 Ww = BP.estimateWaveforms(Vw, X, self.samples);
                 
                 % estimate spike trains via binary pursuit
-                X = BP.estimateSpikes(Vw, X, Ww, self.samples);
+                X = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
             end
         end
     end
@@ -87,12 +90,14 @@ classdef BP
             D = numel(samples);
             W = zeros(M * D, K);
             for iChan = 1 : K
-                MX = sparse(T, D * M);
-                for iSample = 1 : D
-                    index = (1 : T) + samples(iSample);
-                    valid = index > 0 & index <= T;
-                    MX(index(valid), iSample + (0 : D : end - D)) = X(valid, :); %#ok<SPRIX>
-                end
+                [i, j, x] = find(X);
+                i = bsxfun(@plus, i, samples);
+                i = [i - 1; i]; %#ok
+                valid = i > 0 & i <= T;
+                j = bsxfun(@plus, (j - 1) * D, 1 : D);
+                j = [j; j]; %#ok
+                x = repmat([1 - x; x], 1, D);
+                MX = sparse(i(valid), j(valid), x(valid), T, D * M);
                 W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
             end
             W = reshape(W, [D M K]);
@@ -126,14 +131,16 @@ classdef BP
             
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
+                Wi = permute(W(:, i, :), [1 3 2]);
                 for j = 1 : numel(spikes)
-                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - permute(W(:, i, :), [1 3 2]);
+                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - X(j, i) * Wi;
+                    V(spikes(j) + samples - 1, :) = V(spikes(j) + samples - 1, :) - (1 - X(j, i)) * Wi;
                 end
             end
         end
         
         
-        function Xn = estimateSpikes(V, X, W, samples)
+        function Xn = estimateSpikes(V, X, W, samples, up)
             % X = estimateSpikes(V, X, W, samples) estimates the spike
             %   times given the current estimate of the waveforms using
             %   binary pursuit.
@@ -154,24 +161,26 @@ classdef BP
             D = numel(samples);
             s = 1 - D : D - 1;
             M = size(X, 2);
-            dDL = zeros(2 * D - 1, M, M);
+            dDL = zeros((2 * D - 1) * up, M, M);
             for i = 1 : M
                 for j = 1 : M
                     for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(W(:, i, k), flipud(W(:, j, k)));
+                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample(W(:, i, k), up), resample(flipud(W(:, j, k)), up, 1));
                     end
                 end
-                dDL(~s, i, i) = 0;
+                dDL((find(~s) - 1) * up + (1 : up), i, i) = 0;
             end
             
             % greedy search for flips with largest change in posterior
-            Xn = greedy(sparse(T, M), DL, dDL, s, 0, T);
+            win = gausswin(4 * up + 1, 3.5);
+            win = win / sum(win) * up;
+            Xn = greedy(sparse(T, M), DL, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, up, win);
         end
     end
 end
 
 
-function [X, DL] = greedy(X, DL, dDL, s, offset, T)
+function [X, DL] = greedy(X, DL, dDL, s, offset, T, up, win)
     % [X, DL] = greedy(X, DL, dDL, offset, T) performs a greedy search for
     %   flips with largest change in posterior. We use a divide & conquer
     %   approach, splitting the data at the maximum and recursively
@@ -179,40 +188,63 @@ function [X, DL] = greedy(X, DL, dDL, s, offset, T)
     %   substantially.
     
     Tmax = 10000;
-    [m, i, j] = findmax(DL, offset, T);
     if T > Tmax
         % divide & conquer: split at current maximum
-        [X, DL] = flip(X, DL, dDL, s, i, j);
-        [X, DL] = greedy(X, DL, dDL, s, offset, i - offset);
-        [X, DL] = greedy(X, DL, dDL, s, i, T - i + offset);
+        [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win);
+        if ~isnan(i)
+            [X, DL] = greedy(X, DL, dDL, s, offset, i - offset, up, win);
+            [X, DL] = greedy(X, DL, dDL, s, i, T - i + offset, up, win);
+        end
     else
         % regular loop greedily searching maximum
-        while m > 0
-            [X, DL] = flip(X, DL, dDL, s, i, j);
-            [m, i, j] = findmax(DL, offset, T);
+        i = 0;
+        while ~isnan(i)
+            [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win);
         end
     end
 end
 
 
-function [m, i, j] = findmax(DL, offset, T)
+function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
     % [m, i, j] = findmax(DL, offset, T) finds the maximum change of the
     %   log-posterior (DL) achieved by inserting or removing a spike in the
     %   interval DL(offset + (1 : T), :) and returns indices i and j.
     
     [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
-    i = offset + rem(ndx - 1, T) + 1;
-    j = ceil(ndx / T);
+    if m > 0
+        i = offset + rem(ndx - 1, T) + 1;
+        j = ceil(ndx / T);
+        if ~X(i, j)
+            % add spike - subsample
+            pad = (numel(win) - 1) / up / 2 + 1;
+            dl = upsample(DL(i + (-pad : pad), j), up);
+            dl = conv(dl, win, 'valid');
+            [~, sub] = max(dl);
+            sub = sub - up - 1;
+            i = i + 1;
+            while sub < 1
+                i = i - 1;
+                sub = sub + up;
+            end
+            X(i, j) = sub / up;
+        else
+            % remove spike
+            sub = X(i, j) * up;
+            X(i, j) = 0;
+        end
+        DL(i, j) = -DL(i, j);
+        DL(i + s, :) = DL(i + s, :) - (2 * X(i, j) - 1) * dDL(up - sub + 1 : up : end, :, j);
+    else
+        i = NaN;
+    end
 end
 
 
-function [X, DL] = flip(X, DL, dDL, s, i, j)
-    % [X, DL] = flip(X, DL, dDL, s, i, j) flips X(i, j) - i.e. inserts of
-    %   removes a spike - and updates the expected change in log-posterior
-    %   (DL) by dDL in the affected region s.
+function y = upsample(x, k)
+    % y = upsample(x, up) up-samples vector x k times by inserting zeros.
     
-    X(i, j) = ~X(i, j);
-    DL(i, j) = -DL(i, j);
-    DL(i + s, :) = DL(i + s, :) - (2 * X(i, j) - 1) * dDL(:, :, j);
+    n = numel(x);
+    y = zeros((n - 1) * k + 1, 1);
+    y((0 : n - 1) * k + 1) = x;
 end
 
