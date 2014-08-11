@@ -91,12 +91,14 @@ classdef BP
             W = zeros(M * D, K);
             for iChan = 1 : K
                 [i, j, x] = find(X);
+                x = x - 1;
+                d = 2 * (x > 0) - 1;
+                i = [i; i + d]; %#ok
                 i = bsxfun(@plus, i, samples);
-                i = [i - 1; i]; %#ok
                 valid = i > 0 & i <= T;
                 j = bsxfun(@plus, (j - 1) * D, 1 : D);
                 j = [j; j]; %#ok
-                x = repmat([1 - x; x], 1, D);
+                x = repmat([1 - abs(x); abs(x)], 1, D);
                 MX = sparse(i(valid), j(valid), x(valid), T, D * M);
                 W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
             end
@@ -133,8 +135,10 @@ classdef BP
                 spikes = find(X(:, i));
                 Wi = permute(W(:, i, :), [1 3 2]);
                 for j = 1 : numel(spikes)
-                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - X(j, i) * Wi;
-                    V(spikes(j) + samples - 1, :) = V(spikes(j) + samples - 1, :) - (1 - X(j, i)) * Wi;
+                    r = X(j, i) - 1;
+                    s = sign(r);
+                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - (1 - abs(r)) * Wi;
+                    V(spikes(j) + samples + s, :) = V(spikes(j) + samples + s, :) - abs(r) * Wi;
                 end
             end
         end
@@ -146,10 +150,10 @@ classdef BP
             %   binary pursuit.
 
             % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
-            p = sum(X, 1) / size(X, 1);
+            [T, K] = size(V);
+            p = sum(X > 0, 1) / T;
             gamma = log(1 - p) - log(p);
             ww = sum(sum(W .^ 2, 1), 3) / 2;
-            [T, K] = size(V);
             DL = 0;
             for i = 1 : K
                 DL = DL + conv2(V(:, i), flipud(W(:, :, i)));
@@ -161,14 +165,14 @@ classdef BP
             D = numel(samples);
             s = 1 - D : D - 1;
             M = size(X, 2);
-            dDL = zeros((2 * D - 1) * up, M, M);
+            dDL = zeros((2 * D) * up, M, M);
             for i = 1 : M
                 for j = 1 : M
                     for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample(W(:, i, k), up), resample(flipud(W(:, j, k)), up, 1));
+                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; W(:, i, k)], up), resample(flipud(W(:, j, k)), up, 1));
                     end
                 end
-                dDL((find(~s) - 1) * up + (1 : up), i, i) = 0;
+                dDL(find(~s) * up + (1 : up) - fix(up / 2), i, i) = 0;
             end
             
             % greedy search for flips with largest change in posterior
@@ -210,6 +214,7 @@ function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
     %   log-posterior (DL) achieved by inserting or removing a spike in the
     %   interval DL(offset + (1 : T), :) and returns indices i and j.
     
+    ns = numel(s) - 1;
     [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
     if m > 0
         i = offset + rem(ndx - 1, T) + 1;
@@ -219,23 +224,20 @@ function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
             pad = (numel(win) - 1) / up / 2 + 1;
             dl = upsample(DL(i + (-pad : pad), j), up);
             dl = conv(dl, win, 'valid');
-            [~, sub] = max(dl);
-            sub = sub - up - 1;
-            i = i + 1;
-            while sub < 1
-                i = i - 1;
-                sub = sub + up;
-            end
-            X(i, j) = sub / up;
-            DL(i, j) = -DL(i, j);
-            DL(i + s, :) = DL(i + s, :) - dDL(up - sub + 1 : up : end, :, j);
+            [~, r] = max(dl);
+            r = (r - up - 1) / up;
+            di = round(r + eps(r)); % ensure -0.5 gets rounded to 0
+            i = i + di;
+            r = r - di;
+            X(i, j) = 1 + r; % > 1 => shift right, < 1 => shift left
         else
             % remove spike
-            sub = X(i, j) * up;
+            r = X(i, j) - 1;
             X(i, j) = 0;
-            DL(i, j) = -DL(i, j);
-            DL(i + s, :) = DL(i + s, :) + dDL(up - sub + 1 : up : end, :, j);
         end
+        DL(i, j) = -DL(i, j);
+        sub = up + 1 - round(r * up);
+        DL(i + s, :) = DL(i + s, :) - (2 * (X(i, j) > 0) - 1) * dDL(sub + (0 : ns) * up, :, j);
     else
         i = NaN;
     end

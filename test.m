@@ -47,21 +47,23 @@ rate = exp(randn(M, 1) + 2);
 spikes = cell(1, M);
 for i = 1 : M
     s = find(rand(N, 1) < rate(i) / Fs);
+    s = s + round(rand(size(s)) * jitter) / jitter;
     viol = diff(s) < refrac / 1000 * Fs;
     while any(viol)
         s(viol) = [];
         viol = diff(s) < refrac / 1000 * Fs;
     end
     for j = 1 : numel(s)
-        start = round(rand(1) * jitter);
-        v(s(j) + ndx, :) = v(s(j) + ndx, :) + spikeJit(start + (1 : jitter : jitter * D)) * ampl(i, :);
+        start = round((1 - rem(s(j), 1)) * jitter);
+        sj = fix(s(j));
+        v(sj + ndx, :) = v(sj + ndx, :) + spikeJit(start + (1 : jitter : jitter * D)) * ampl(i, :);
     end
     spikes{i} = s;
 end
 
 X = sparse(N, M);
 for i = 1 : numel(spikes)
-    X(spikes{i}, i) = 1; %#ok
+    X(round(spikes{i}), i) = 1; %#ok
 end
 V = v;
 
