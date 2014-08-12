@@ -135,7 +135,7 @@ classdef BP
                 spikes = find(X(:, i));
                 Wi = permute(W(:, i, :), [1 3 2]);
                 for j = 1 : numel(spikes)
-                    r = X(j, i) - 1;
+                    r = X(spikes(j), i) - 1;
                     s = sign(r);
                     V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - (1 - abs(r)) * Wi;
                     V(spikes(j) + samples + s, :) = V(spikes(j) + samples + s, :) - abs(r) * Wi;
