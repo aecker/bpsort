@@ -73,6 +73,6 @@ q = round(self.tempFiltLen / 1000 * self.Fs);
 W = BP.estimateWaveforms(V, X, self.samples);
 R = BP.residuals(V, X, W, self.samples);
 Vw = BP.whitenData(V, R, q);
-Ww = BP.estimateWaveforms(Vw, X, self.samples);
+Ww = BP.estimateWaveforms(Vw, X, self.samples, self.pruning);
 Xn = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
 

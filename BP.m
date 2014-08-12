@@ -15,6 +15,7 @@ classdef BP
         verbose     % verbose output during fitting?
         tempFiltLen % length of temporal whitening filter (ms)
         upsampling  % upsampling factor for spike times
+        pruning     % pruning threshold for subset selection on waveforms
         T           % # samples
         D           % # dimensions
         K           % # channels
@@ -42,6 +43,7 @@ classdef BP
             p.addOptional('verbose', false);
             p.addOptional('tempFiltLen', 1.5);
             p.addOptional('upsampling', 5);
+            p.addOptional('pruning', 1);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -50,6 +52,7 @@ classdef BP
             self.verbose = p.Results.verbose;
             self.tempFiltLen = p.Results.tempFiltLen;
             self.upsampling = p.Results.upsampling;
+            self.pruning = p.Results.pruning;
         end
         
         
@@ -69,7 +72,7 @@ classdef BP
                 W = BP.estimateWaveforms(V, X, self.samples);
                 R = BP.residuals(V, X, W, self.samples);
                 Vw = BP.whitenData(V, R, q);
-                Ww = BP.estimateWaveforms(Vw, X, self.samples);
+                Ww = BP.estimateWaveforms(Vw, X, self.samples, self.pruning);
                 
                 % estimate spike trains via binary pursuit
                 X = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
@@ -79,11 +82,15 @@ classdef BP
     
     methods (Static)
         
-        function W = estimateWaveforms(V, X, samples)
+        function W = estimateWaveforms(V, X, samples, pruning)
             % W = estimateWaveforms(V, X, samples) estimates the waveforms
             %   W given the observed voltage V and spike times X. The
             %   vector samples specifies which samples relative to the
             %   spike time should be estimated.
+            %
+            % W = estimateWaveforms(V, X, samples, pruning) applies subset
+            %   selection on the waveforms using the given pruning factor
+            %   (multiples of the noise amplitude).
             
             [T, K] = size(V);
             M = size(X, 2);
@@ -103,6 +110,11 @@ classdef BP
                 W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
             end
             W = reshape(W, [D M K]);
+            
+            % subset selection of waveforms
+            if nargin > 3 && pruning > 0
+                W(:, sqrt(sum(W .^ 2, 1)) < pruning) = 0;
+            end
         end
         
         
