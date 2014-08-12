@@ -172,7 +172,6 @@ classdef BP
                         dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; W(:, i, k)], up), resample(flipud(W(:, j, k)), up, 1));
                     end
                 end
-                dDL(find(~s) * up + (1 : up) - fix(up / 2), i, i) = 0;
             end
             
             % greedy search for flips with largest change in posterior
@@ -223,21 +222,19 @@ function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
             % add spike - subsample
             pad = (numel(win) - 1) / up / 2 + 1;
             dl = upsample(DL(i + (-pad : pad), j), up);
-            dl = conv(dl, win, 'valid');
+            dl = conv(dl(ceil(up / 2) + 1 : end - ceil(up / 2)), win, 'valid');
             [~, r] = max(dl);
-            r = (r - up - 1) / up;
-            di = round(r + eps(r)); % ensure -0.5 gets rounded to 0
-            i = i + di;
-            r = r - di;
+            r = (r - fix(up / 2) - 1) / up;
             X(i, j) = 1 + r; % > 1 => shift right, < 1 => shift left
         else
             % remove spike
             r = X(i, j) - 1;
             X(i, j) = 0;
         end
-        DL(i, j) = -DL(i, j);
+        DLij = DL(i, j);
         sub = up + 1 - round(r * up);
         DL(i + s, :) = DL(i + s, :) - (2 * (X(i, j) > 0) - 1) * dDL(sub + (0 : ns) * up, :, j);
+        DL(i, j) = -DLij;
     else
         i = NaN;
     end
