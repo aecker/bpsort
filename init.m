@@ -21,7 +21,7 @@ nGroups = size(groups, 1);
 
 
 %% Load raw data
-T = 5;  % minutes
+T = 1;  % minutes
 
 % file = '/kyb/agmbrecordings/raw/Dennis/2014-08-01_12-35-36/2014-08-01_12-35-43/Electrophysiology%d.h5';
 % file = '/kyb/agmbrecordings/raw/Charles/2014-06-26_13-17-59/2014-06-26_13-20-39/Electrophysiology%d.h5';
@@ -30,20 +30,20 @@ br = baseReader(file, 's1c*');
 Fs = getSamplingRate(br);
 Nyq = 6000;
 fr = filteredReader(br, filterFactory.createBandpass(400, 600, 5800, Nyq, Fs));
-x = fr(1 : Fs * T * 60, :);
-x = toMuV(br, x);
+V = fr(1 : Fs * T * 60, :);
+V = toMuV(br, V);
 
 % downsample
 [p, q] = rat(2 * Nyq / Fs);
-x = resample(x, p, q);
+V = resample(V, p, q);
 Fs = p / q * Fs;
 
 
 %% detect and sort spikes in groups
-df = 2;  % use mixture of t model with df = 2
+df = 5;
 results = struct('s', {}, 'w', {}, 'b', {}, 'model', {});
 for i = 1 : nGroups
-    xi = x(:, groups(i, :));
+    xi = V(:, groups(i, :));
     [s, t] = detectSpikes(xi, Fs);
     w = extractWaveforms(xi, s);
     b = extractFeatures(w);
@@ -57,6 +57,16 @@ end
 
 
 %% remove doubles
+X = removeDuplicateClusters(results, 0.5, round(Fs * T * 60));
 
 
+%% extract spikes
+self = BP('window', [-.4 1.2], 'Fs', Fs);
+q = round(self.tempFiltLen / 1000 * self.Fs);
+W = BP.estimateWaveforms(V, X, self.samples);
+R = BP.residuals(V, X, W, self.samples);
+Vw = BP.whitenData(V, R, q);
+Ww = BP.estimateWaveforms(Vw, X, self.samples, self.pruning);
+Xn = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
+Wn = BP.estimateWaveforms(V, Xn, self.samples);
 
