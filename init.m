@@ -28,8 +28,7 @@ T = 1;  % minutes
 file = '/kyb/agmbrecordings/raw/Charles/2014-07-21_13-50-16/2014-07-21_13-52-57/Electrophysiology%d.h5';
 br = baseReader(file, 's1c*');
 Fs = getSamplingRate(br);
-Nyq = 6000;
-fr = filteredReader(br, filterFactory.createBandpass(400, 600, 5800, Nyq, Fs));
+fr = filteredReader(br, filterFactory.createHighpass(400, 600, Fs));
 V = fr(1 : Fs * T * 60, :);
 V = toMuV(br, V);
 
