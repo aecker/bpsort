@@ -41,7 +41,7 @@ classdef BP
             p.addOptional('window', [-1 1.5]);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
-            p.addOptional('tempFiltLen', 1.5);
+            p.addOptional('tempFiltLen', 0.7);
             p.addOptional('upsampling', 5);
             p.addOptional('pruning', 1);
             p.parse(varargin{:});
@@ -125,11 +125,12 @@ classdef BP
             
             % temporal whitening
             for i = 1 : size(V, 2)
-                Lt = toeplitz(xcorr(R(:, i), q));
-                Lt = Lt(q + 1 : end, 1 : q + 1);
+                Lt = toeplitz(xcorr(R(:, i), 2 * q));
+                Lt = Lt(2 * q + 1 : end, 1 : 2 * q + 1);
                 w = sqrtm(inv(Lt));
-                V(:, i) = conv2(V(:, i), w, 'same');
-                R(:, i) = conv2(R(:, i), w, 'same');
+                w = w(:, q + 1);
+                V(:, i) = conv(V(:, i), w, 'same');
+                R(:, i) = conv(R(:, i), w, 'same');
             end
             
             % spatial whitening
