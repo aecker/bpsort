@@ -55,11 +55,12 @@ X = removeDuplicateClusters(results, 0.5, round(Fs * T * 60));
 
 
 %% extract spikes
-self = BP('window', [-.4 1.2], 'Fs', Fs);
+pass = [600 15000] / (Fs / 2);   % passband
+self = BP('window', [-.4 1.2], 'Fs', Fs, 'passband', pass);
 q = round(self.tempFiltLen / 1000 * self.Fs);
 W = BP.estimateWaveforms(V, X, self.samples);
 R = BP.residuals(V, X, W, self.samples);
-Vw = BP.whitenData(V, R, q);
+Vw = BP.whitenData(V, R, q, self.passband);
 Ww = BP.estimateWaveforms(Vw, X, self.samples, self.pruning);
 Xn = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
 Wn = BP.estimateWaveforms(V, Xn, self.samples);

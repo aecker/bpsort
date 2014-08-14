@@ -68,7 +68,7 @@ end
 V = v;
 
 % run initialized with ground truth
-self = BP('window', [-.4 1.2]);
+self = BP('window', [-.4 1.2], 'passband', [600, Fs / 2] / (Fs / 2));
 q = round(self.tempFiltLen / 1000 * self.Fs);
 W = BP.estimateWaveforms(V, X, self.samples);
 R = BP.residuals(V, X, W, self.samples);

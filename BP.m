@@ -16,6 +16,7 @@ classdef BP
         tempFiltLen % length of temporal whitening filter (ms)
         upsampling  % upsampling factor for spike times
         pruning     % pruning threshold for subset selection on waveforms
+        passband    % passband of continuous input signal
         T           % # samples
         D           % # dimensions
         K           % # channels
@@ -34,6 +35,8 @@ classdef BP
             %   Fs           sampling rate (Hz)
             %   verbose      true|false
             %   tempFiltLen  length of filter for temporal whitening
+            %   passband     passband of the continuous input signal
+            %                (default = [600 15000] / Nyquist)
             
             % parse optional parameters
             p = inputParser;
@@ -44,6 +47,7 @@ classdef BP
             p.addOptional('tempFiltLen', 0.7);
             p.addOptional('upsampling', 5);
             p.addOptional('pruning', 1);
+            p.addOptional('passband', [0.6 15] / 16);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -53,6 +57,7 @@ classdef BP
             self.tempFiltLen = p.Results.tempFiltLen;
             self.upsampling = p.Results.upsampling;
             self.pruning = p.Results.pruning;
+            self.passband = p.Results.passband;
         end
         
         
@@ -118,17 +123,38 @@ classdef BP
         end
         
         
-        function V = whitenData(V, R, q)
-            % V = whitenData(V, q) whitens the data V, assuming that the
-            %   spatio-temporal covariance separates into a spatial and a
-            %   temporal component.
+        function V = whitenData(V, R, q, pass)
+            % V = whitenData(V, R, q, pass) whitens the data V, assuming
+            %   that the spatio-temporal covariance separates into a
+            %   spatial and a temporal component. Whitening filters are
+            %   estimated from the residuals R. The length of the temporal
+            %   whitenting filter is 2 * q - 1. Since V is usually band-
+            %   limited, the (normalized) passband must be specified by the
+            %   two-element vector pass (Nyquist frequency = 1).
+
+            % determine frequencies outside the passband to avoid
+            % amplification of those frequencies
+            k = 4 * q + 1;
+            F = linspace(0, 2, k + 1);
+            F = F(1 : end - 1);
+            high = find(F > pass(2) & F < 2 - pass(2));
+            U = dftmtx(k);
             
             % temporal whitening
             for i = 1 : size(V, 2)
-                Lt = toeplitz(xcorr(R(:, i), 2 * q));
-                Lt = Lt(2 * q + 1 : end, 1 : 2 * q + 1);
-                w = sqrtm(inv(Lt));
-                w = w(:, q + 1);
+                
+                % construct filter for temporal whitening
+                c = xcorr(R(:, i), 2 * q, 'coeff');
+                c = ifftshift(c);
+                ci = 1./ abs(fft(c));
+                if ~isempty(high)
+                    ci(high) = ci(high(1) - 1);
+                end
+                ci(F < pass(1) | F > 2 - pass(1)) = 0;
+                w = real(U * (sqrt(ci) .* U(2 * q + 1, :)') / k);
+                w = w(q + 1 : end - q);
+
+                % apply temporal whitening filter
                 V(:, i) = conv(V(:, i), w, 'same');
                 R(:, i) = conv(R(:, i), w, 'same');
             end
