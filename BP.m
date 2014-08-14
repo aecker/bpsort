@@ -213,7 +213,7 @@ classdef BP
             for i = 1 : M
                 for j = 1 : M
                     for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; W(:, i, k)], up), resample(flipud(W(:, j, k)), up, 1));
+                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; flipud(W(:, i, k))], up), resample(W(:, j, k), up, 1));
                     end
                 end
             end
