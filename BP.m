@@ -35,6 +35,11 @@ classdef BP
             %   Fs           sampling rate (Hz)
             %   verbose      true|false
             %   tempFiltLen  length of filter for temporal whitening
+            %                (default = 0.7 ms)
+            %   upsampling   upsampling factor used for spike detection
+            %                (default = 5)
+            %   pruning      pruning constant applied for subset selection
+            %                when estimating waveforms (default = 1)
             %   passband     passband of the continuous input signal
             %                (default = [600 15000] / Nyquist)
             
