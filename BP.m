@@ -117,6 +117,7 @@ classdef BP
             MX = sparse(i(valid), j(valid), x(valid), T, D * M);
             W = (MX' * MX) \ (MX' * V);
             W = reshape(W, [D M K]);
+            W = permute(W, [1 3 2]);
             
             % subset selection of waveforms
             if nargin > 3 && pruning > 0
@@ -174,12 +175,11 @@ classdef BP
             
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
-                Wi = permute(W(:, i, :), [1 3 2]);
                 for j = 1 : numel(spikes)
                     r = X(spikes(j), i) - 1;
                     s = sign(r);
-                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - (1 - abs(r)) * Wi;
-                    V(spikes(j) + samples + s, :) = V(spikes(j) + samples + s, :) - abs(r) * Wi;
+                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - (1 - abs(r)) * W(:, :, i);
+                    V(spikes(j) + samples + s, :) = V(spikes(j) + samples + s, :) - abs(r) * W(:, :, i);
                 end
             end
         end
@@ -194,10 +194,11 @@ classdef BP
             [T, K] = size(V);
             p = sum(X > 0, 1) / T;
             gamma = log(1 - p) - log(p);
-            ww = sum(sum(W .^ 2, 1), 3) / 2;
+            ww = permute(sum(sum(W .^ 2, 1), 2) / 2, [1 3 2]);
             DL = 0;
-            for i = 1 : K
-                DL = DL + conv2(V(:, i), flipud(W(:, :, i)));
+            for k = 1 : K
+                Wk = permute(W(:, k, :), [1 3 2]);
+                DL = DL + conv2(V(:, k), flipud(Wk));
             end
             DL = DL(samples(end) + (1 : T), :);
             DL = bsxfun(@minus, DL, gamma + ww);
@@ -210,7 +211,7 @@ classdef BP
             for i = 1 : M
                 for j = 1 : M
                     for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; flipud(W(:, i, k))], up), resample(W(:, j, k), up, 1));
+                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; flipud(W(:, k, i))], up), resample(W(:, k, j), up, 1));
                     end
                 end
             end
