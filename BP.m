@@ -105,20 +105,17 @@ classdef BP
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(samples);
-            W = zeros(M * D, K);
-            for iChan = 1 : K
-                [i, j, x] = find(X);
-                x = x - 1;
-                d = 2 * (x > 0) - 1;
-                i = [i; i + d]; %#ok
-                i = bsxfun(@plus, i, samples);
-                valid = i > 0 & i <= T;
-                j = bsxfun(@plus, (j - 1) * D, 1 : D);
-                j = [j; j]; %#ok
-                x = repmat([1 - abs(x); abs(x)], 1, D);
-                MX = sparse(i(valid), j(valid), x(valid), T, D * M);
-                W(:, iChan) = (MX' * MX) \ (MX' * V(:, iChan));
-            end
+            [i, j, x] = find(X);
+            x = x - 1;
+            d = 2 * (x > 0) - 1;
+            i = [i; i + d];
+            i = bsxfun(@plus, i, samples);
+            valid = i > 0 & i <= T;
+            j = bsxfun(@plus, (j - 1) * D, 1 : D);
+            j = [j; j];
+            x = repmat([1 - abs(x); abs(x)], 1, D);
+            MX = sparse(i(valid), j(valid), x(valid), T, D * M);
+            W = (MX' * MX) \ (MX' * V);
             W = reshape(W, [D M K]);
             
             % subset selection of waveforms
