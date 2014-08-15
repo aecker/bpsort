@@ -32,6 +32,11 @@ fr = filteredReader(br, filterFactory.createHighpass(400, 600, Fs));
 V = fr(1 : Fs * T * 60, :);
 V = toMuV(br, V);
 
+% downsample
+[p, q] = rat(2 * Nyq / Fs);
+V = resample(V, p, q);
+Fs = p / q * Fs;
+
 
 %% detect and sort spikes in groups
 df = 5;
@@ -39,7 +44,7 @@ results = struct('s', {}, 'w', {}, 'b', {}, 'model', {});
 for i = 1 : nGroups
     xi = V(:, groups(i, :));
     [s, t] = detectSpikes(xi, Fs);
-    w = extractWaveforms(xi, s, -8 : 19);
+    w = extractWaveforms(xi, s);
     b = extractFeatures(w);
     model = MixtureModel.fit(b, df);
     
