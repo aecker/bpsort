@@ -14,7 +14,7 @@ end
 
 %% Create channel groups
 num = 5;
-overlap = 5;
+overlap = 4;
 ndx = bsxfun(@plus, 1 : num, (0 : (num - overlap) : numel(channels) - num)');
 groups = channels(ndx);
 nGroups = size(groups, 1);
@@ -51,7 +51,7 @@ end
 
 
 %% remove doubles
-X = removeDuplicateClusters(results, 0.5, round(Fs * T * 60));
+X = keepMaxClusters(results, round(Fs * T * 60), 0.6);
 
 
 %% extract spikes
