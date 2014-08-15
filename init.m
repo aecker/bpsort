@@ -13,9 +13,9 @@ end
 
 
 %% Create channel groups
-num = 4;
-overlap = 2;
-ndx = bsxfun(@plus, 1 : num, (0 : overlap : numel(channels) - num)');
+num = 5;
+overlap = 5;
+ndx = bsxfun(@plus, 1 : num, (0 : (num - overlap) : numel(channels) - num)');
 groups = channels(ndx);
 nGroups = size(groups, 1);
 
