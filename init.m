@@ -21,7 +21,7 @@ nGroups = size(groups, 1);
 
 
 %% Load raw data
-T = 1;  % minutes
+T = 10;  % minutes
 
 % file = '/kyb/agmbrecordings/raw/Dennis/2014-08-01_12-35-36/2014-08-01_12-35-43/Electrophysiology%d.h5';
 % file = '/kyb/agmbrecordings/raw/Charles/2014-06-26_13-17-59/2014-06-26_13-20-39/Electrophysiology%d.h5';
@@ -33,6 +33,7 @@ V = fr(1 : Fs * T * 60, :);
 V = toMuV(br, V);
 
 % downsample
+Nyq = 6000;
 [p, q] = rat(2 * Nyq / Fs);
 V = resample(V, p, q);
 Fs = p / q * Fs;
@@ -60,13 +61,18 @@ X = keepMaxClusters(results, round(Fs * T * 60), 0.6);
 
 
 %% extract spikes
-pass = [600 15000] / (Fs / 2);   % passband
-self = BP('window', [-.4 1.2], 'Fs', Fs, 'passband', pass);
-q = round(self.tempFiltLen / 1000 * self.Fs);
-W = BP.estimateWaveforms(V, X, self.samples);
-R = BP.residuals(V, X, W, self.samples);
-Vw = BP.whitenData(V, R, q, self.passband);
-Ww = BP.estimateWaveforms(Vw, X, self.samples, self.pruning);
-Xn = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
-Wn = BP.estimateWaveforms(V, Xn, self.samples);
+pass = [600 5000] / (Fs / 2);   % passband
+bp = BP('window', [-1 2], 'Fs', Fs, 'passband', pass, 'tempFiltLen', 0.5);
+q = round(bp.tempFiltLen / 1000 * bp.Fs);
+iter = 3;
+X = [{X}, cell(1, iter)];
+for i = 1 : iter
+    disp(i)
+    W = BP.estimateWaveforms(V, X{i}, bp.samples);
+    R = BP.residuals(V, X{i}, W, bp.samples);
+    Vw = BP.whitenData(V, R, q, bp.passband);
+    Ww = BP.estimateWaveforms(Vw, X{i}, bp.samples, bp.pruning);
+    X{i + 1} = BP.estimateSpikes(Vw, X{i}, Ww, bp.samples, bp.upsampling);
+end
+W = BP.estimateWaveforms(V, X{iter + 1}, bp.samples);
 
