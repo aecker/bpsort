@@ -17,10 +17,7 @@ classdef BP
         upsampling  % upsampling factor for spike times
         pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
-        T           % # samples
         D           % # dimensions
-        K           % # channels
-        M           % # clusters
     end
     
     methods
@@ -66,50 +63,68 @@ classdef BP
         end
         
         
-        function self = fit(self, V, X)
-            % bp = bp.fit(V, X0) fits the model to waveforms V using the
-            %   initial spike sorting results X0.
+        function [X, W] = fit(self, V, X, iter)
+            % Fit model (i.e. estimate waveform templates and spike times).
+            %   [X, W] = self.fit(V, X0) fits the model to waveforms V
+            %   using the initial spike sorting results X0.
             %
-            %   V    T-by-K     T: number of time bins
-            %                   K: number of channels
-            %   X0   T-by-M     M: number of clusters
-            %        sparse matrix with ones indicating spikes
+            %   [X, W] = self.fit(V, X0, iter) uses the specified number of
+            %   iterations to fit the parameters (default = 3).
+            %
+            %   INPUTS
+            %
+            %   V       Continuous voltage signal
+            %           T-by-K      T: number of time bins
+            %                       K: number of channels
+            %
+            %   X0      Initial spike sorting result (sparse matrix, where
+            %           X_ij=1 indicates a spike at sample i and neuron j)
+            %           T-by-M      M: number of clusters
+            %
+            %   iter    Number of iterations to run
+            %
+            %
+            %   OUTPUTS
+            %
+            %   X       Spike times (same format as input X0)
+            %
+            %   W       Array of waveforms 
+            %           D-by-K-by-M     D: number of samples
+            %                           K: number of channels
+            %                           M: number of neurons
 
-            q = round(self.tempFiltLen / 1000 * self.Fs);
-            while ~converged
-                
-                % estimate waveforms, whiten data, re-estimate waveforms
-                W = BP.estimateWaveforms(V, X, self.samples);
-                R = BP.residuals(V, X, W, self.samples);
-                Vw = BP.whitenData(V, R, q);
-                Ww = BP.estimateWaveforms(Vw, X, self.samples, self.pruning);
-                
-                % estimate spike trains via binary pursuit
-                X = BP.estimateSpikes(Vw, X, Ww, self.samples, self.upsampling);
+            if nargin < 4
+                iter = 3;
             end
+            for i = 1 : iter
+                W = self.estimateWaveforms(V, X);
+                R = self.residuals(V, X, W);
+                Vw = self.whitenData(V, R);
+                Ww = self.estimateWaveforms(Vw, X, self.pruning);
+                X = self.estimateSpikes(Vw, X, Ww);
+            end
+            W = self.estimateWaveforms(V, X);
         end
-    end
-    
-    methods (Static)
         
-        function W = estimateWaveforms(V, X, samples, pruning)
-            % W = estimateWaveforms(V, X, samples) estimates the waveforms
-            %   W given the observed voltage V and spike times X. The
-            %   vector samples specifies which samples relative to the
-            %   spike time should be estimated.
+        
+        function W = estimateWaveforms(self, V, X, pruning)
+            % Estimate waveform templates given spike times.
+            %   W = self.estimateWaveforms(V, X) estimates the waveforms W
+            %   given the observed voltage V and the current estimate of
+            %   the spike times X.
             %
-            % W = estimateWaveforms(V, X, samples, pruning) applies subset
+            %   W = self.estimateWaveforms(V, X, pruning) applies subset
             %   selection on the waveforms using the given pruning factor
             %   (multiples of the noise amplitude).
             
             [T, K] = size(V);
             M = size(X, 2);
-            D = numel(samples);
+            D = numel(self.samples);
             [i, j, x] = find(X);
             x = x - 1;
             d = 2 * (x > 0) - 1;
             i = [i; i + d];
-            i = bsxfun(@plus, i, samples);
+            i = bsxfun(@plus, i, self.samples);
             valid = i > 0 & i <= T;
             j = bsxfun(@plus, (j - 1) * D, 1 : D);
             j = [j; j];
@@ -126,21 +141,21 @@ classdef BP
         end
         
         
-        function V = whitenData(V, R, q, pass)
-            % V = whitenData(V, R, q, pass) whitens the data V, assuming
+        function V = whitenData(self, V, R)
+            % Whiten data.
+            %   V = self.whitenData(V, R) whitens the data V, assuming
             %   that the spatio-temporal covariance separates into a
             %   spatial and a temporal component. Whitening filters are
-            %   estimated from the residuals R. The length of the temporal
-            %   whitenting filter is 2 * q - 1. Since V is usually band-
-            %   limited, the (normalized) passband must be specified by the
-            %   two-element vector pass (Nyquist frequency = 1).
+            %   estimated from the residuals R.
 
             % determine frequencies outside the passband to avoid
             % amplification of those frequencies
+            q = round(self.tempFiltLen / 1000 * self.Fs);
             k = 4 * q + 1;
             F = linspace(0, 2, k + 1);
             F = F(1 : end - 1);
-            high = find(F > pass(2) & F < 2 - pass(2));
+            high = find(F > self.passband(2) & F < 2 - self.passband(2));
+            low = F < self.passband(1) | F > 2 - self.passband(1);
             U = dftmtx(k);
             
             % temporal whitening
@@ -153,7 +168,7 @@ classdef BP
                 if ~isempty(high)
                     ci(high) = ci(high(1) - 1);
                 end
-                ci(F < pass(1) | F > 2 - pass(1)) = 0;
+                ci(low) = 0;
                 w = real(U * (sqrt(ci) .* U(2 * q + 1, :)') / k);
                 w = w(q + 1 : end - q);
 
@@ -167,28 +182,28 @@ classdef BP
         end
         
         
-        function V = residuals(V, X, W, samples)
-            % R = residuals(V, X, W, samples) computes the residuals by
-            %   subtracting the model prediction X * W from the data V. The
-            %   vector samples specifies how to center the waveforms for
-            %   the convolution.
+        function V = residuals(self, V, X, W)
+            % Compute residuals by subtracting waveform templates.
+            %   R = self.residuals(V, X, W) computes the residuals by
+            %   subtracting the model prediction X * W from the data V.
             
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
                 for j = 1 : numel(spikes)
                     r = X(spikes(j), i) - 1;
                     s = sign(r);
-                    V(spikes(j) + samples, :) = V(spikes(j) + samples, :) - (1 - abs(r)) * W(:, :, i);
-                    V(spikes(j) + samples + s, :) = V(spikes(j) + samples + s, :) - abs(r) * W(:, :, i);
+                    V(spikes(j) + self.samples, :) = V(spikes(j) + self.samples, :) - (1 - abs(r)) * W(:, :, i);
+                    V(spikes(j) + self.samples + s, :) = V(spikes(j) + self.samples + s, :) - abs(r) * W(:, :, i);
                 end
             end
         end
         
         
-        function Xn = estimateSpikes(V, X, W, samples, up)
-            % X = estimateSpikes(V, X, W, samples) estimates the spike
-            %   times given the current estimate of the waveforms using
-            %   binary pursuit.
+        function Xn = estimateSpikes(self, V, X, W)
+            % Estimate spike times given waveform templates.
+            %   X = self.estimateSpikes(V, X, W) estimates the spike times
+            %   given the current estimate of the waveforms using binary
+            %   pursuit.
 
             % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
             [T, K] = size(V);
@@ -200,11 +215,12 @@ classdef BP
                 Wk = permute(W(:, k, :), [1 3 2]);
                 DL = DL + conv2(V(:, k), flipud(Wk));
             end
-            DL = DL(samples(end) + (1 : T), :);
+            DL = DL(self.samples(end) + (1 : T), :);
             DL = bsxfun(@minus, DL, gamma + ww);
             
             % pre-compute updates to \Delta L needed when flipping X_ij
-            D = numel(samples);
+            up = self.upsampling;
+            D = self.D;
             s = 1 - D : D - 1;
             M = size(X, 2);
             dDL = zeros((2 * D) * up, M, M);

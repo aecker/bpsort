@@ -63,16 +63,4 @@ X = keepMaxClusters(results, round(Fs * T * 60), 0.6);
 %% extract spikes
 pass = [600 5000] / (Fs / 2);   % passband
 bp = BP('window', [-1 2], 'Fs', Fs, 'passband', pass, 'tempFiltLen', 0.5);
-q = round(bp.tempFiltLen / 1000 * bp.Fs);
-iter = 3;
-X = [{X}, cell(1, iter)];
-for i = 1 : iter
-    disp(i)
-    W = BP.estimateWaveforms(V, X{i}, bp.samples);
-    R = BP.residuals(V, X{i}, W, bp.samples);
-    Vw = BP.whitenData(V, R, q, bp.passband);
-    Ww = BP.estimateWaveforms(Vw, X{i}, bp.samples, bp.pruning);
-    X{i + 1} = BP.estimateSpikes(Vw, X{i}, Ww, bp.samples, bp.upsampling);
-end
-W = BP.estimateWaveforms(V, X{iter + 1}, bp.samples);
-
+[X, W] = bp.fit(V, X, 3);
