@@ -15,6 +15,8 @@ classdef BP
         verbose     % verbose output during fitting?
         tempFiltLen % length of temporal whitening filter (ms)
         upsamplingFactor  % upsampling factor for spike times
+        upsamplingFilter        % filter used for subsampling
+        upsamplingFilterOrder   % filter order (for subsampling filter)
         pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
         D           % # dimensions
@@ -60,6 +62,15 @@ classdef BP
             self.upsamplingFactor = p.Results.upsamplingFactor;
             self.pruning = p.Results.pruning;
             self.passband = p.Results.passband;
+            
+            % design filter for resampling
+            p = self.upsamplingFactor;
+            n = 5;
+            len = 2 * n * p + 1;
+            f = 1 / p;
+            h = p * firls(len - 1, [0 f f 1], [1 1 0 0])' .* kaiser(len, 5);
+            self.upsamplingFilter = [zeros(p, 1); h; zeros(p, 1)];
+            self.upsamplingFilterOrder = n;
         end
         
         
@@ -237,6 +248,22 @@ classdef BP
             win = win / sum(win) * p;
             Xn = greedy(sparse(T, M), DL, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, win);
         end
+        
+        
+        function y = interp(self, x, k, shape)
+            % Interpolate x using subsample shifts
+            %   y = self.interp(x, k) interpolates x, shifting it by k
+            %   subsamples (i.e. k / self.subsampling samples).
+            
+            if nargin < 4
+                shape = 'same';
+            end
+            p = self.upsamplingFactor;
+            n = numel(self.upsamplingFilter) - 2 * p;
+            h = self.upsamplingFilter((p + k) + (1 : p : n));
+            y = convn(x, h, shape);
+        end
+        
     end
 end
 
