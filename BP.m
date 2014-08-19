@@ -14,7 +14,7 @@ classdef BP
         Fs          % sampling rate
         verbose     % verbose output during fitting?
         tempFiltLen % length of temporal whitening filter (ms)
-        upsampling  % upsampling factor for spike times
+        upsamplingFactor  % upsampling factor for spike times
         pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
         D           % # dimensions
@@ -27,18 +27,18 @@ classdef BP
             %   bp = BP('param1', value1, 'param2', value2, ...) constructs
             %   a BP object with the following optional parameters:
             %
-            %   window       1x2 vector specifying the time window (ms) to
-            %                extract waveforms (peak = 0; default [-0.5 1])
-            %   Fs           sampling rate (Hz)
-            %   verbose      true|false
-            %   tempFiltLen  length of filter for temporal whitening
-            %                (default = 0.7 ms)
-            %   upsampling   upsampling factor used for spike detection
-            %                (default = 5)
-            %   pruning      pruning constant applied for subset selection
-            %                when estimating waveforms (default = 1)
-            %   passband     passband of the continuous input signal
-            %                (default = [600 15000] / Nyquist)
+            %   window: 1x2 vector specifying the time window (ms) to
+            %       extract waveforms (peak = 0; default [-0.5 1])
+            %   Fs: sampling rate (Hz)
+            %   verbose: true|false
+            %   tempFiltLen: length of filter for temporal whitening
+            %       (default = 0.7 ms)
+            %   upsamplingFactor: upsampling factor used for spike
+            %       detection (default = 5)
+            %   pruning: constant applied for subset selection when
+            %       estimating waveforms (default = 1)
+            %   passband: passband of the continuous input signal (default:
+            %       [600 15000] / Nyquist)
             
             % parse optional parameters
             p = inputParser;
@@ -47,7 +47,7 @@ classdef BP
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
             p.addOptional('tempFiltLen', 0.7);
-            p.addOptional('upsampling', 5);
+            p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('pruning', 1);
             p.addOptional('passband', [0.6 15] / 16);
             p.parse(varargin{:});
@@ -57,7 +57,7 @@ classdef BP
             self.D = numel(self.samples);
             self.verbose = p.Results.verbose;
             self.tempFiltLen = p.Results.tempFiltLen;
-            self.upsampling = p.Results.upsampling;
+            self.upsamplingFactor = p.Results.upsamplingFactor;
             self.pruning = p.Results.pruning;
             self.passband = p.Results.passband;
         end
@@ -219,23 +219,23 @@ classdef BP
             DL = bsxfun(@minus, DL, gamma + ww);
             
             % pre-compute updates to \Delta L needed when flipping X_ij
-            up = self.upsampling;
+            p = self.upsamplingFactor;
             D = self.D;
             s = 1 - D : D - 1;
             M = size(X, 2);
-            dDL = zeros((2 * D) * up, M, M);
+            dDL = zeros((2 * D) * p, M, M);
             for i = 1 : M
                 for j = 1 : M
                     for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; flipud(W(:, k, i))], up), resample(W(:, k, j), up, 1));
+                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; flipud(W(:, k, i))], p), resample(W(:, k, j), p, 1));
                     end
                 end
             end
             
             % greedy search for flips with largest change in posterior
-            win = gausswin(4 * up + 1, 3.5);
-            win = win / sum(win) * up;
-            Xn = greedy(sparse(T, M), DL, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, up, win);
+            win = gausswin(4 * p + 1, 3.5);
+            win = win / sum(win) * p;
+            Xn = greedy(sparse(T, M), DL, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, win);
         end
     end
 end
