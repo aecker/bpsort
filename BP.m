@@ -198,13 +198,18 @@ classdef BP
             %   R = self.residuals(V, X, W) computes the residuals by
             %   subtracting the model prediction X * W from the data V.
             
+            T = size(V, 1);
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
                 for j = 1 : numel(spikes)
                     r = X(spikes(j), i) - 1;
                     s = sign(r);
-                    V(spikes(j) + self.samples, :) = V(spikes(j) + self.samples, :) - (1 - abs(r)) * W(:, :, i);
-                    V(spikes(j) + self.samples + s, :) = V(spikes(j) + self.samples + s, :) - abs(r) * W(:, :, i);
+                    samples = spikes(j) + self.samples;
+                    valid = samples > 0 & samples < T;
+                    V(samples(valid), :) = V(samples(valid), :) - (1 - abs(r)) * W(valid, :, i);
+                    samples = samples + s;
+                    valid = samples > 0 & samples < T;
+                    V(samples(valid), :) = V(samples(valid), :) - abs(r) * W(valid, :, i);
                 end
             end
         end
