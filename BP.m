@@ -152,6 +152,46 @@ classdef BP
         end
         
         
+        function U = extractWaveforms(self, V, X, W)
+            % Extract individual waveforms with removal of overlaps.
+            
+            % Pre-compute templates with all possible subsample shifts
+            [D, K, M] = size(W);
+            p = self.upsamplingFactor;
+            Ws = zeros(D, K, M, p);
+            for i = 1 : p
+                shift = ceil(p / 2) - i;
+                Ws(:, :, :, i) = self.interp(W, shift);
+            end
+            
+            [cl, s, x] = find(X');
+            shift = round((x - 1) * p);
+            n = self.upsamplingFilterOrder;
+            samples = self.samples(1) - n : self.samples(end) + n;
+            d = self.samples(end) - self.samples(1);
+            N = numel(s);
+            U = zeros(D, K, N);
+            for i = 1 : N
+                Ui = self.interp(V(s(i) + samples, :), shift(i), 'valid');
+                
+                % subtract templates for overlapping waveforms
+                k = i - 1;
+                while k > 0 && s(i) - s(k) < d
+                    ds = s(i) - s(k);
+                    Ui(1 : end - ds, :) = Ui(1 : end - ds, :) - Ws(ds + 1 : end, :, cl(k), shift(k) + ceil(p / 2));
+                    k = k - 1;
+                end
+                k = i + 1;
+                while k <= N && s(k) - s(i) < d
+                    ds = s(k) - s(i);
+                    Ui(ds + 1 : end, :) = Ui(ds + 1 : end, :) - Ws(1 : end - ds, :, cl(k), shift(k) + ceil(p / 2));
+                    k = k + 1;
+                end
+                U(:, :, i) = Ui;
+            end
+        end
+        
+        
         function V = whitenData(self, V, R)
             % Whiten data.
             %   V = self.whitenData(V, R) whitens the data V, assuming
