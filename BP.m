@@ -19,6 +19,7 @@ classdef BP
         upsamplingFilterOrder   % filter order (for subsampling filter)
         pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
+        searchWin   % search window for waveform shifts when computing responsibilities
         D           % # dimensions
     end
     
@@ -52,6 +53,7 @@ classdef BP
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('pruning', 1);
             p.addOptional('passband', [0.6 15] / 16);
+            p.addOptional('searchWin', 0.5);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -62,6 +64,7 @@ classdef BP
             self.upsamplingFactor = p.Results.upsamplingFactor;
             self.pruning = p.Results.pruning;
             self.passband = p.Results.passband;
+            self.searchWin = p.Results.searchWin;
             
             % design filter for resampling
             p = self.upsamplingFactor;
@@ -152,7 +155,7 @@ classdef BP
         end
         
         
-        function U = extractWaveforms(self, V, X, W)
+        function [U, cl] = extractWaveforms(self, V, X, W)
             % Extract individual waveforms with removal of overlaps.
             
             % Pre-compute templates with all possible subsample shifts
@@ -160,34 +163,60 @@ classdef BP
             p = self.upsamplingFactor;
             Ws = zeros(D, K, M, p);
             for i = 1 : p
-                shift = ceil(p / 2) - i;
+                shift = i - ceil(p / 2);
                 Ws(:, :, :, i) = self.interp(W, shift);
+            end
+            
+            % Pre-compute upsampled templates
+            Wu = rot90(reshape(permute(Ws, [4 1 2 3]), [p * D, K, M]), 2);
+            
+            % Find clusters with overlapping waveforms
+            active = permute(double(sum(abs(W), 1) > 0), [2 3 1]);
+            t = (active' * active) > 0;
+            overlap = cell(1, M);
+            for i = 1 : M
+                overlap{i} = setdiff(find(t(i, :)), i);
             end
             
             [cl, s, x] = find(X');
             shift = round((x - 1) * p);
             n = self.upsamplingFilterOrder;
-            samples = self.samples(1) - n : self.samples(end) + n;
+            m = ceil(self.searchWin * self.Fs / 1000);
+            sV = self.samples(1) - n - m : self.samples(end) + n + m;
             d = self.samples(end) - self.samples(1);
             N = numel(s);
-            U = zeros(D, K, N);
+            U = cell(N, M);
             for i = 1 : N
-                Ui = self.interp(V(s(i) + samples, :), shift(i), 'valid');
+                Ui = V(s(i) + sV, :);
                 
                 % subtract templates for overlapping waveforms
-                k = i - 1;
-                while k > 0 && s(i) - s(k) < d
-                    ds = s(i) - s(k);
-                    Ui(1 : end - ds, :) = Ui(1 : end - ds, :) - Ws(ds + 1 : end, :, cl(k), shift(k) + ceil(p / 2));
+                k = i;
+                while k > 1 && s(i) - s(k - 1) < d
                     k = k - 1;
                 end
-                k = i + 1;
                 while k <= N && s(k) - s(i) < d
-                    ds = s(k) - s(i);
-                    Ui(ds + 1 : end, :) = Ui(ds + 1 : end, :) - Ws(1 : end - ds, :, cl(k), shift(k) + ceil(p / 2));
+                    if k ~= i
+                        ds = s(k) - s(i);
+                        ii = max(1, n + m + 1 + ds) : min(2 * (n + m) + D, n + m + D + ds);
+                        kk = max(1, 1 - ds - n - m) : min(D, D - ds + n + m);
+                        Ui(ii, :) = Ui(ii, :) - Ws(kk, :, cl(k), ceil(p / 2) - shift(k));
+                    end
                     k = k + 1;
                 end
-                U(:, :, i) = Ui;
+                U{i, cl(i)} = self.interp(Ui(m + 1 : end - m, :), shift(i), 'valid');
+                
+                % find optimal time shift for nearby clusters
+                Uip = upsample(Ui(n + 1 : end - n, :), p);
+                for j = overlap{cl(i)}
+                    t = conv2(Uip, Wu(:, :, j), 'valid');
+                    [~, ndx] = max(t);
+                    sh = ndx - (m * p - 1);
+                    k = sh - round(sh / p) * p;
+                    sh = round(sh / p);
+                    ii = m + sh + (1 : D + 2 * n);
+                    U{i, j} = self.interp(Ui(ii, :), k, 'valid');
+                end
+            end
             end
         end
         
@@ -374,8 +403,8 @@ end
 function y = upsample(x, k)
     % y = upsample(x, up) up-samples vector x k times by inserting zeros.
     
-    n = numel(x);
-    y = zeros((n - 1) * k + 1, 1);
-    y((0 : n - 1) * k + 1) = x;
+    [m, n] = size(x);
+    y = zeros((m - 1) * k + 1, n);
+    y((0 : m - 1) * k + 1, :) = x;
 end
 
