@@ -141,7 +141,7 @@ classdef MixtureModel
             %                   deviations in muV.
             
             % catch degrees of freedom as second input
-            if isnumeric(varargin{1})
+            if nargin > 1 && isnumeric(varargin{1})
                 dof = varargin{1};
                 varargin(1) = [];
             else
