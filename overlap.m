@@ -1,12 +1,12 @@
 % Test harness using synthetic data
 
 rng(1)
-T = 0.5;        % min
+T = 1;        % min
 K = 3;          % channels
 M = 2;          % single units
 Fs = 12000;     % Hz
 N = T * 60 * Fs;
-sd = 1;         % noise SD
+sd = 7;         % noise SD
 refrac = 2;     % ms refractory period 
 rate = 50;      % spikes/s
 
@@ -18,7 +18,7 @@ D = numel(spike);
 Wt = spike * [1 2 1];
 Wt(:, :, 2) = Wt + 0.3 * [spike(2 : D); 0] * [1 -1 0] ...
                  + 0.3 * [0; spike(1 : D - 1)] * [0 1 -1];
-Wt = 8 * Wt;
+Wt = 35 * Wt;
 
 % add spikes
 V = randn(N, K) * sd;
@@ -52,7 +52,7 @@ bp = BP('window', [-0.4 1.2], 'Fs', Fs, 'passband', pass);
 
 %% plot waveforms
 smp = bp.samples;
-sp = max(W(:)) * 1.5;
+sp = max(abs(W(:)));
 c = [1 0 0; 0 0.4 1];
 figure(1), clf
 h(1) = subplot(121); hold on
@@ -69,7 +69,7 @@ axis tight
 
 %% plot raw trace with detected and assigned spikes
 figure(2), clf
-plot(bsxfun(@plus, V, (1 : K) * 20), 'k')
+plot(bsxfun(@plus, V, (1 : K) * 100), 'k')
 hold on
 for i = 1 : 2
     sp = find(Xt(:, i));
