@@ -83,3 +83,17 @@ end
 ii = 178630;
 xlim(ii + [-1 1] * 200)
 
+
+%% run mixture model to check for overlap of the two clusters
+[~, s] = find(Xt');
+w = extractWaveforms(V, s, smp);
+% b = extractFeatures(w, 5);
+% model = MixtureModel.fit(b);
+
+
+%% plot overlap using ground truth
+dw = diff(reshape(W, D * K, 2), [], 2);
+dw = dw / norm(dw);
+ww = reshape(permute(w, [1 3 2]), D * K, []);
+figure(3), clf
+hist(dw' * ww, 80)
