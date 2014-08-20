@@ -79,3 +79,7 @@ for i = 1 : 2
 end
 
 
+%% Check what happens here
+ii = 178630;
+xlim(ii + [-1 1] * 200)
+
