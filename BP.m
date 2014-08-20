@@ -217,7 +217,25 @@ classdef BP
                     U{i, j} = self.interp(Ui(ii, :), k, 'valid');
                 end
             end
+        end
+        
+        
+        function tau = responsibilities(self, U, W, cl)
+            % Compute responsibilities for each spike.
+            
+            [N, M] = size(U);
+            tau = zeros(N, M + 1);
+            for i = 1 : N
+                for j = 1 : M
+                    if ~isempty(U{i, j})
+                        z = U{i, j} - W(:, :, j);
+                        tau(i, j) = exp(-(z(:)' * z(:)) / 2);
+                    end
+                end
+                z = U{i, cl(i)};
+                tau(i, M + 1) = exp(-(z(:)' * z(:)) / 2);
             end
+            tau = bsxfun(@rdivide, tau, sum(tau, 2));
         end
         
         
