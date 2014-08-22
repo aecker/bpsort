@@ -20,6 +20,7 @@ classdef BP
         pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
         dt          % time window for tracking waveform drift (sec)
+        driftRate   % waveform drift rate (muV, SD per time step)
         D           % # dimensions
     end
     
@@ -54,6 +55,7 @@ classdef BP
             p.addOptional('pruning', 1);
             p.addOptional('passband', [0.6 15] / 16);
             p.addOptional('dt', 30);
+            p.addOptional('driftRate', 0.1);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -65,6 +67,7 @@ classdef BP
             self.pruning = p.Results.pruning;
             self.passband = p.Results.passband;
             self.dt = p.Results.dt;
+            self.driftRate = p.Results.driftRate;
             
             % design filter for resampling
             p = self.upsamplingFactor;
@@ -134,7 +137,6 @@ classdef BP
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(self.samples);
-            W = W(:);
             
             % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
@@ -148,29 +150,61 @@ classdef BP
             x = repmat([1 - abs(x); abs(x)], 1, D);
             MX = sparse(i(valid), j(valid), x(valid), T, D * M);
             
-            % Initialize
             Tdt = self.dt * self.Fs;
             Ndt = ceil(T / Tdt);
-            P(:, :, 1) = TODO; %%%%
-                        
-            % Forward pass
-            for k = 2 : Ndt
-                idx = (k - 1) * Tdt + (1 : Tdt);
-                Vk = V(idx, :);
-                MXk = MX(idx, :);
-                Vr = Vk - MXk * W;
-                
-                % S = H * P * H' + R
-                % inv(S) = inv(R) - inv(R) * H * inv(inv(P) + H'*inv(R)*H) * H' * inv(R)
-                % K = P * H' * inv(S)
-
-                S = MX * P(:, :, k) * MX'
+            W = zeros(D * M, K, Ndt);
+            Q = eye(D * M) * self.driftRate ^ 2;
+            
+            % Pre-compute MX' * MX
+            MXprod = zeros(D * M, D * M, Ndt);
+            for t = 1 : Ndt
+                tt = (t - 1) * Tdt + (1 : Tdt);
+                MXt = MX(tt, :);
+                MXprod(:, :, t) = MXt' * MXt;
             end
             
+            % Initialize
+            MX1 = MX(1 : Tdt, :);
+            W(:, :, 1) = MXprod(:, :, 1) \ (MX1' * V(1 : Tdt, :));
             
-            W = (MX' * MX) \ (MX' * V);
-            W = reshape(W, [D M K]);
-            W = permute(W, [1 3 2]);
+            % Go through all channels
+            for k = 1 : K
+                
+                % Initialize state covariance
+                P = zeros(D * M, D * M, Ndt);
+                n = full(sum(MX1, 1));
+                P(:, :, 1) = diag(1 ./ (n + ~n));
+            
+                % Forward pass
+                Pti = zeros(D * M, D * M, Ndt);
+                I = eye(D * M);
+                for t = 2 : Ndt
+                    
+                    % Predict
+                    Pt = P(:, :, t - 1) + Q;
+                    Pti(:, :, t) = inv(Pt);
+                    Wt = W(:, k, t - 1);
+                    
+                    % Update
+                    tt = (t - 1) * Tdt + (1 : Tdt);
+                    MXt = MX(tt, :);
+                    MXp = MXprod(:, :, t);
+                    Kp = Pt * (I - MXp / (Pti(:, :, t) + MXp)); % Kalman gain (K = Kp * MX)
+                    KpMXp = Kp * MXp;
+                    W(:, k, t) = Wt + Kp * (MXt' * V(tt, k)) - KpMXp * Wt;
+                    P(:, :, t) = (I - KpMXp) * Pt;
+                end
+                
+                % Backward pass
+                for t = Ndt - 1 : -1 : 1
+                    Ct = P(:, :, t) * Pti(:, :, t + 1);
+                    W(:, k, t) = W(:, k, t) + Ct * (W(:, k, t + 1) - W(:, k, t));
+                end
+            end
+            
+            % Re-organize waveforms by cluster
+            W = reshape(W, [D M K Ndt]);
+            W = permute(W, [1 3 2 4]);
             
             % subset selection of waveforms
             if nargin > 3 && pruning > 0
