@@ -137,6 +137,8 @@ classdef BP
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(self.samples);
+            Tdt = self.dt * self.Fs;
+            Ndt = ceil(T / Tdt);
             
             % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
@@ -144,35 +146,50 @@ classdef BP
             d = 2 * (x > 0) - 1;
             i = [i; i + d];
             i = bsxfun(@plus, i, self.samples);
-            valid = i > 0 & i <= T;
+            valid = find(i > 0 & i <= T);
             j = bsxfun(@plus, (j - 1) * D, 1 : D);
             j = [j; j];
             x = repmat([1 - abs(x); abs(x)], 1, D);
-            MX = sparse(i(valid), j(valid), x(valid), T, D * M);
             
-            Tdt = self.dt * self.Fs;
-            Ndt = ceil(T / Tdt);
+            [i, order] = sort(i(valid));
+            j = j(valid(order));
+            x = x(valid(order));
+            
+            borders = zeros(1, Ndt + 1);
+            chunk = 1;
+            k = 1;
+            while chunk < Ndt && k <= numel(i)
+                if i(k) > chunk * Tdt
+                    n = ceil(i(k) / Tdt) - chunk;
+                    borders(chunk + (1 : n)) = k - 1;
+                    chunk = chunk + n;
+                end
+                k = k + 1;
+            end
+            borders(chunk + 1 : end) = numel(i);
+
             W = zeros(D * M, K, Ndt);
             Q = eye(D * M) * self.driftRate ^ 2;
             
             % Pre-compute MX' * MX
             MXprod = zeros(D * M, D * M, Ndt);
             for t = 1 : Ndt
-                tt = (t - 1) * Tdt + (1 : Tdt);
-                MXt = MX(tt, :);
+                idx = borders(t) + 1 : borders(t + 1);
+                MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
                 MXprod(:, :, t) = MXt' * MXt;
             end
             
             % Initialize
-            MX1 = MX(1 : Tdt, :);
-            W(:, :, 1) = MXprod(:, :, 1) \ (MX1' * V(1 : Tdt, :));
+            MX1 = sparse(i(1 : borders(2)), j(1 : borders(2)), x(1 : borders(2)), Tdt, D * M);
+            n = full(sum(MX1, 1));
+            idx = n > 0;
+            W(idx, :, 1) = MXprod(idx, idx, 1) \ (MX1(:, idx)' * V(1 : Tdt, :));
             
             % Go through all channels
             for k = 1 : K
                 
                 % Initialize state covariance
                 P = zeros(D * M, D * M, Ndt);
-                n = full(sum(MX1, 1));
                 P(:, :, 1) = diag(1 ./ (n + ~n));
             
                 % Forward pass
@@ -186,11 +203,12 @@ classdef BP
                     Wt = W(:, k, t - 1);
                     
                     % Update
-                    tt = (t - 1) * Tdt + (1 : Tdt);
-                    MXt = MX(tt, :);
+                    idx = borders(t) + 1 : borders(t + 1);
+                    MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
                     MXp = MXprod(:, :, t);
                     Kp = Pt * (I - MXp / (Pti(:, :, t) + MXp)); % Kalman gain (K = Kp * MX)
                     KpMXp = Kp * MXp;
+                    tt = (t - 1) * Tdt + (1 : Tdt);
                     W(:, k, t) = Wt + Kp * (MXt' * V(tt, k)) - KpMXp * Wt;
                     P(:, :, t) = (I - KpMXp) * Pt;
                 end
