@@ -19,6 +19,7 @@ classdef BP
         upsamplingFilterOrder   % filter order (for subsampling filter)
         pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
+        dt          % time window for tracking waveform drift (sec)
         D           % # dimensions
     end
     
@@ -52,6 +53,7 @@ classdef BP
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('pruning', 1);
             p.addOptional('passband', [0.6 15] / 16);
+            p.addOptional('dt', 30);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -62,6 +64,7 @@ classdef BP
             self.upsamplingFactor = p.Results.upsamplingFactor;
             self.pruning = p.Results.pruning;
             self.passband = p.Results.passband;
+            self.dt = p.Results.dt;
             
             % design filter for resampling
             p = self.upsamplingFactor;
@@ -131,6 +134,9 @@ classdef BP
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(self.samples);
+            W = W(:);
+            
+            % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
             x = x - 1;
             d = 2 * (x > 0) - 1;
@@ -141,6 +147,27 @@ classdef BP
             j = [j; j];
             x = repmat([1 - abs(x); abs(x)], 1, D);
             MX = sparse(i(valid), j(valid), x(valid), T, D * M);
+            
+            % Initialize
+            Tdt = self.dt * self.Fs;
+            Ndt = ceil(T / Tdt);
+            P(:, :, 1) = TODO; %%%%
+                        
+            % Forward pass
+            for k = 2 : Ndt
+                idx = (k - 1) * Tdt + (1 : Tdt);
+                Vk = V(idx, :);
+                MXk = MX(idx, :);
+                Vr = Vk - MXk * W;
+                
+                % S = H * P * H' + R
+                % inv(S) = inv(R) - inv(R) * H * inv(inv(P) + H'*inv(R)*H) * H' * inv(R)
+                % K = P * H' * inv(S)
+
+                S = MX * P(:, :, k) * MX'
+            end
+            
+            
             W = (MX' * MX) \ (MX' * V);
             W = reshape(W, [D M K]);
             W = permute(W, [1 3 2]);
