@@ -47,13 +47,13 @@ classdef BP
             % parse optional parameters
             p = inputParser;
             p.KeepUnmatched = true;
-            p.addOptional('window', [-1 1.5]);
+            p.addOptional('window', [-1 2]);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
-            p.addOptional('tempFiltLen', 0.7);
+            p.addOptional('tempFiltLen', 0.5);
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('pruning', 1);
-            p.addOptional('passband', [0.6 15] / 16);
+            p.addOptional('passband', [0.6 5] / 12);
             p.addOptional('dt', 30);
             p.addOptional('driftRate', 0.1);
             p.parse(varargin{:});
