@@ -278,17 +278,19 @@ classdef BP
             %   subtracting the model prediction X * W from the data V.
             
             T = size(V, 1);
+            Tdt = self.dt * self.Fs;
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
                 for j = 1 : numel(spikes)
                     r = X(spikes(j), i) - 1;
                     s = sign(r);
+                    t = ceil(spikes(j) / Tdt);
                     samples = spikes(j) + self.samples;
                     valid = samples > 0 & samples < T;
-                    V(samples(valid), :) = V(samples(valid), :) - (1 - abs(r)) * W(valid, :, i);
+                    V(samples(valid), :) = V(samples(valid), :) - (1 - abs(r)) * W(valid, :, i, t);
                     samples = samples + s;
                     valid = samples > 0 & samples < T;
-                    V(samples(valid), :) = V(samples(valid), :) - abs(r) * W(valid, :, i);
+                    V(samples(valid), :) = V(samples(valid), :) - abs(r) * W(valid, :, i, t);
                 end
             end
         end
