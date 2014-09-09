@@ -302,29 +302,41 @@ classdef BP
             %   given the current estimate of the waveforms using binary
             %   pursuit.
 
-            % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
             [T, K] = size(V);
-            p = sum(X > 0, 1) / T;
-            gamma = log(1 - p) - log(p);
-            ww = permute(sum(sum(W .^ 2, 1), 2) / 2, [1 3 2]);
-            DL = 0;
-            for k = 1 : K
-                Wk = permute(W(:, k, :), [1 3 2]);
-                DL = DL + conv2(V(:, k), flipud(Wk));
-            end
-            DL = DL(self.samples(end) + (1 : T), :);
-            DL = bsxfun(@minus, DL, gamma + ww);
-            
-            % pre-compute updates to \Delta L needed when flipping X_ij
+            M = size(X, 2);
+            Tdt = self.dt * self.Fs;
+            Ndt = ceil(T / Tdt);
+            DL = zeros(T, M);
             p = self.upsamplingFactor;
             D = self.D;
             s = 1 - D : D - 1;
             M = size(X, 2);
-            dDL = zeros((2 * D) * p, M, M);
-            for i = 1 : M
-                for j = 1 : M
-                    for k = 1 : K
-                        dDL(:, i, j) = dDL(:, i, j) + conv(upsample([0; flipud(W(:, k, i))], p), resample(W(:, k, j), p, 1));
+            dDL = zeros((2 * D) * p, M, M, Ndt);
+            for t = 1 : Ndt
+                Wt = W(:, :, :, t);
+                
+                % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
+                r = sum(X > 0, 1) / T;
+                gamma = log(1 - r) - log(r);
+                ww = permute(sum(sum(Wt .^ 2, 1), 2) / 2, [1 3 2]);
+                DLt = 0;
+                for k = 1 : K
+                    Wk = permute(Wt(:, k, :), [1 3 2]);
+                    Vk = V(max(1, (t - 1) * Tdt - self.samples(end) + 1) : min(T, t * Tdt - self.samples(1)), k);
+                    DLtk = conv2(Vk, flipud(Wk));
+                    first = (1 + (t > 1)) * self.samples(end) + 1;
+                    last = size(DLtk, 1) + (1 + (t < Ndt)) * self.samples(1);
+                    DLt = DLt + DLtk(first : last, :);
+                end
+                DLt = bsxfun(@minus, DLt, gamma + ww);
+                DL((t - 1) * Tdt + 1 : min(t * Tdt, T), :) = DLt;
+                
+                % pre-compute updates to \Delta L needed when flipping X_ij
+                for i = 1 : M
+                    for j = 1 : M
+                        for k = 1 : K
+                            dDL(:, i, j, t) = dDL(:, i, j, t) + conv(upsample([0; flipud(Wt(:, k, i))], p), resample(Wt(:, k, j), p, 1));
+                        end
                     end
                 end
             end
