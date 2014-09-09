@@ -145,14 +145,15 @@ classdef BP
             
             % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
-            x = x - 1;
-            d = 2 * (x > 0) - 1;
+            r = imag(x);
+            a = real(x);
+            d = 2 * (r > 0) - 1;
             i = [i; i + d];
             i = bsxfun(@plus, i, self.samples);
             valid = find(i > 0 & i <= T);
             j = bsxfun(@plus, (j - 1) * D, 1 : D);
             j = [j; j];
-            x = repmat([1 - abs(x); abs(x)], 1, D);
+            x = repmat([a .* (1 - abs(r)); a .* abs(r)], 1, D);
             
             [i, order] = sort(i(valid));
             j = j(valid(order));
@@ -285,15 +286,16 @@ classdef BP
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
                 for j = 1 : numel(spikes)
-                    r = X(spikes(j), i) - 1;
+                    r = imag(X(spikes(j), i));
+                    a = real(X(spikes(j), i));
                     s = sign(r);
                     t = ceil(spikes(j) / Tdt);
                     samples = spikes(j) + self.samples;
                     valid = samples > 0 & samples < T;
-                    V(samples(valid), :) = V(samples(valid), :) - (1 - abs(r)) * W(valid, :, i, t);
+                    V(samples(valid), :) = V(samples(valid), :) - a * (1 - abs(r)) * W(valid, :, i, t);
                     samples = samples + s;
                     valid = samples > 0 & samples < T;
-                    V(samples(valid), :) = V(samples(valid), :) - abs(r) * W(valid, :, i, t);
+                    V(samples(valid), :) = V(samples(valid), :) - a * abs(r) * W(valid, :, i, t);
                 end
             end
         end
@@ -316,7 +318,6 @@ classdef BP
             p = self.upsamplingFactor;
             D = self.D;
             s = 1 - D : D - 1;
-            M = size(X, 2);
             dDL = zeros((2 * D) * p, M, M, Ndt);
             for t = 1 : Ndt
                 Wt = W(:, :, :, t);
@@ -424,13 +425,13 @@ function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, win, wws, wVs)
             a = conv(a(ceil(up / 2) + 1 : end - ceil(up / 2)), win, 'valid');
             a = a(r);
             r = (r - fix(up / 2) - 1) / up;
-            % real aprt: subsample (> 1 => shift right, < 1 => shift left)
-            % imaginary part: amplitude
-            X(i, j) = (1 + r) + 1i * a;
+            % real part: amplitude
+            % imaginary part: subsample (> 0 => shift right, < 0 => shift left)
+            X(i, j) = a + 1i * r;
         else
             % remove spike
-            r = real(X(i, j) - 1);
-            a = imag(X(i, j));
+            a = real(X(i, j));
+            r = imag(X(i, j));
             X(i, j) = 0;
         end
         DLij = DL(i, j);
