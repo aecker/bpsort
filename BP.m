@@ -396,6 +396,7 @@ function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
     %   log-posterior (DL) achieved by inserting or removing a spike in the
     %   interval DL(offset + (1 : T), :) and returns indices i and j.
     
+    Tdt = ceil(size(X, 1) / size(dDL, 4));
     ns = numel(s) - 1;
     [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
     if m > 0
@@ -416,7 +417,9 @@ function [X, DL, i] = flip(X, DL, dDL, s, offset, T, up, win)
         end
         DLij = DL(i, j);
         sub = up + 1 - round(r * up);
-        DL(i + s, :) = DL(i + s, :) - (2 * (X(i, j) > 0) - 1) * dDL(sub + (0 : ns) * up, :, j);
+        sgn = 2 * (X(i, j) > 0) - 1;
+        t = ceil(i / Tdt);
+        DL(i + s, :) = DL(i + s, :) - sgn * dDL(sub + (0 : ns) * up, :, j, t);
         DL(i, j) = -DLij;
     else
         i = NaN;
