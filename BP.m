@@ -57,7 +57,7 @@ classdef BP
             p.addOptional('passband', [0.6 5] / 12);
             p.addOptional('dt', 30);
             p.addOptional('driftRate', 0.1);
-            p.addOptional('sigmaAmpl', 0.01);
+            p.addOptional('sigmaAmpl', 0.1);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
