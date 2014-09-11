@@ -45,26 +45,31 @@ X0_ = X0;
 
 
 %% Estimate waveforms
-bp = BP('dt', 10, 'driftRate', 0.1);
-W = bp.estimateWaveforms(V, X0);
+bp = BP('dt', 10, 'driftRate', 0.1, 'sigmaAmpl', 0.1);
+[X, W] = bp.fit(V, X0, 1);
 
 
 %% plot raw trace with detected and assigned spikes
 [~, K, M, Nt] = size(W);
 Tt = bp.dt * bp.Fs;
 figure(2), clf
-ndx = 1 : N;
+ndx = 1 : 1e6;
 spacing = 200;
 smp = bp.samples;
 plot(bsxfun(@plus, V(ndx, :), (1 : K) * spacing), 'k')
 hold on
-c = jet(M + 1);
+c = hsv(M + 1);
 for i = 1 : M
-    spikes = find(X0(ndx, i));
+    Xn = X(ndx, i);
+    spikes = find(Xn);
+    ampl = Xn(spikes);
     for j = 1 : numel(spikes)
         t = ceil(spikes(j) / Tt);
-        plot(spikes(j) + smp, bsxfun(@plus, W(:, :, i, t), (1 : K) * spacing), 'color', c(i, :))
+        plot(spikes(j) + smp, bsxfun(@plus, ampl(j) * W(:, :, i, t), (1 : K) * spacing), 'color', c(i, :))
     end
 end
+set(gca, 'color', 0.5 * ones(1, 3))
+colormap(c)
+set(colorbar, 'ytick', (1 : M) + 0.5, 'yticklabel', 1 : M)
 
 
