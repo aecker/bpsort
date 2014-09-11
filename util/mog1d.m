@@ -1,15 +1,15 @@
 function [mu, sigma, prior, assignment] = mog1d(x, K, iter)
-% One-dimensional mixture of two Gaussians
+% One-dimensional mixture of two Gaussians with common variance.
 
-mu = randn(K, 1) * std(x) + mean(x);
-sigma = ones(K, 1) * std(x);
+mu = linspace(min(x), max(x), K);
+sigma = std(x);
 prior = ones(K, 1) / K;
 
 for i = 1 : iter
     % E step
     like = zeros(size(x, 1), K);
     for k = 1 : K
-        like(:, k) = prior(k) * normal(x, mu(k), sigma(k));
+        like(:, k) = prior(k) * normal(x, mu(k), sigma);
     end
     p = sum(like, 2);
     post = bsxfun(@rdivide, like, p);
@@ -17,11 +17,13 @@ for i = 1 : iter
     
     % M step
     Nk = sum(post, 1);
+    dev = 0;
     for k = 1 : K
         mu(k) = x' * post(:, k) / Nk(k);
         xmu = x - mu(k);
-        sigma(k) = xmu' * (xmu .* post(:, k)) / Nk(k);
+        dev = dev + xmu' * (xmu .* post(:, k));
     end
+    sigma = dev / numel(x);
     prior = Nk / sum(Nk);
 end
 [~, assignment] = max(post, [], 2);
