@@ -45,7 +45,7 @@ X0_ = X0;
 
 
 %% Estimate waveforms
-bp = BP('dt', 10, 'driftRate', 0.1, 'sigmaAmpl', 0.1);
+bp = BP('dt', 10, 'driftRate', 0.1, 'sigmaAmpl', 0.05);
 [X, W] = bp.fit(V, X0, 1);
 
 
