@@ -1,9 +1,10 @@
-function [mu, sigma, prior, assignment] = mog1d(x, K, iter)
+function [mu, sigma, prior, assignment, bic] = mog1d(x, K, iter)
 % One-dimensional mixture of two Gaussians with common variance.
 
 mu = linspace(min(x), max(x), K);
 sigma = std(x);
 prior = ones(K, 1) / K;
+N = numel(x);
 
 for i = 1 : iter
     % E step
@@ -23,10 +24,11 @@ for i = 1 : iter
         xmu = x - mu(k);
         dev = dev + xmu' * (xmu .* post(:, k));
     end
-    sigma = dev / numel(x);
+    sigma = dev / N;
     prior = Nk / sum(Nk);
 end
 [~, assignment] = max(post, [], 2);
+bic = -2 * sum(log(p)) + (2 * K + 1) * log(N);
 
 
 function p = normal(x, mu, sigma)
