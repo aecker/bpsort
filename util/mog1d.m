@@ -1,4 +1,4 @@
-function [mu, sigma, prior, assignment] = MoG1d(x, K, iter)
+function [mu, sigma, prior, assignment] = mog1d(x, K, iter)
 % One-dimensional mixture of two Gaussians
 
 mu = randn(K, 1) * std(x) + mean(x);

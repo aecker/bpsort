@@ -1,4 +1,4 @@
-function [mu, sigma, prior, assignment] = Mot1d(x, df, K, iter)
+function [mu, sigma, prior, assignment] = mot1d(x, df, K, iter)
 % One-dimensional mixture of Student's t distributions.
 
 mu = linspace(min(x), max(x), K);
