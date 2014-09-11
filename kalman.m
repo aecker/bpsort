@@ -73,3 +73,36 @@ colormap(c)
 set(colorbar, 'ytick', (1 : M) + 0.5, 'yticklabel', 1 : M)
 
 
+%% Test splitting based on bimodal amplitude distributions
+% X_ = X;
+M = size(X, 2);
+K = 2;
+iter = 100;
+mu = zeros(M, K);
+sigma = zeros(M, 1);
+prior = zeros(M, K);
+cl = cell(M, 1);
+bic = zeros(M, 2);
+for i = 1 : M
+    a = full(real(X(X(:, i) > 0, i)));
+    [mu(i, :), sigma(i), prior(i, :), cl{i}, bic(i, 2)] = mog1d(a, K, iter);
+    
+    % BIC for single Gaussian
+    sd = var(a);
+    bic(i, 1) = sum((a - mean(a)) .^ 2 / sd + log(2 * pi * sd)) + 2 * log(numel(a));
+end
+dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
+
+
+%%
+split = find(bic(:, 1) > bic(:, 2) & dprime > 1);
+for i = split'
+    ndx = find(X(:, i));
+    X(ndx(cl{i} == 2), end + 1) = X(ndx(cl{i} == 2), i); %#ok
+    X(ndx(cl{i} == 2), i) = 0;
+end
+
+
+%% re-fit
+[X, W] = bp.fit(V, X, 1);
+
