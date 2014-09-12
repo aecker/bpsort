@@ -58,11 +58,11 @@ spacing = 200;
 smp = bp.samples;
 plot(bsxfun(@plus, V(ndx, :), (1 : K) * spacing), 'k')
 hold on
-c = hsv(M + 1);
+c = hsv(M);
 for i = 1 : M
     Xn = X(ndx, i);
     spikes = find(Xn);
-    ampl = Xn(spikes);
+    ampl = real(Xn(spikes));
     for j = 1 : numel(spikes)
         t = ceil(spikes(j) / Tt);
         plot(spikes(j) + smp, bsxfun(@plus, ampl(j) * W(:, :, i, t), (1 : K) * spacing), 'color', c(i, :))
