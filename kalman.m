@@ -108,10 +108,17 @@ dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
 
 %%
 split = find(bic(:, 1) > bic(:, 2) & dprime > 1);
-for i = split'
-    ndx = find(X(:, i));
-    X(ndx(cl{i} == 2), end + 1) = X(ndx(cl{i} == 2), i); %#ok
-    X(ndx(cl{i} == 2), i) = 0;
+for j = split'
+    ndx = find(X(:, j));
+    i = ndx(cl{j} == 1);
+    X(i, j) = X(i, j) / mean(X(i, j));
+    i = ndx(cl{j} == 2);
+    X(i, end + 1) = X(i, j) / mean(X(i, j)); %#ok
+    X(i, j) = 0;
+end
+for j = setdiff(1 : M, split)
+    i = find(X(:, j));
+    X(i, j) = X(i, j) / mean(X(i, j));
 end
 
 
