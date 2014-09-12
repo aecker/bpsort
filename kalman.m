@@ -49,6 +49,18 @@ bp = BP('dt', 10, 'driftRate', 0.1, 'sigmaAmpl', 0.05);
 [X, W] = bp.fit(V, X0, 1);
 
 
+%% plot waveforms
+M = size(W, 3);
+c = hsv(M);
+figure(1)
+set(gcf, 'DefaultAxesColorOrder', c);
+clf, hold on
+set(gca, 'color', 0.5 * ones(1, 3));
+plot(bsxfun(@plus, (1 : M) * 100, reshape(W(:, :, :, 1), [], M)))
+colormap(c)
+set(colorbar, 'ytick', (1 : M) + 0.5, 'yticklabel', 1 : M)
+
+
 %% plot raw trace with detected and assigned spikes
 [~, K, M, Nt] = size(W);
 Tt = bp.dt * bp.Fs;
