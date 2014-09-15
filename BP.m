@@ -328,7 +328,7 @@ classdef BP
             p = self.upsamplingFactor;
             D = self.D;
             s = 1 - D : D - 1;
-            dDL = zeros((2 * D) * p, M, M, Ndt);
+            dDL = zeros(2 * D - 1, M, M, p, Ndt);
             for t = 1 : Ndt
                 Wt = W(:, :, :, t);
                 
@@ -358,7 +358,8 @@ classdef BP
                 for i = 1 : M
                     for j = 1 : M
                         for k = 1 : K
-                            dDL(:, i, j, t) = dDL(:, i, j, t) + conv(upsample([0; flipud(Wt(:, k, i))], p), resample(Wt(:, k, j), p, 1));
+                            dDLijk = conv2(conv(flipud(Wt(:, k, i)), Wt(:, k, j)), self.upsamplingFilter);
+                            dDL(:, i, j, :, t) = dDL(:, i, j, :, t) + permute(dDLijk(p + 1 : end - p, :), [1 3 4 2]);
                         end
                     end
                 end
@@ -366,7 +367,7 @@ classdef BP
             
             % greedy search for flips with largest change in posterior
             h = fliplr(self.upsamplingFilter);
-            Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, h, wws, wVs);
+            Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, h, wws, wVs);
         end
         
         
@@ -430,7 +431,7 @@ classdef BP
 end
 
 
-function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
+function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, h, wws, wVs)
     % [X, DL, A] = greedy(X, DL, A, dDL, offset, T) performs a greedy
     %   search for flips with largest change in posterior. We use a divide
     %   & conquer approach, splitting the data at the maximum and
@@ -440,28 +441,28 @@ function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
     Tmax = 10000;
     if T > Tmax
         % divide & conquer: split at current maximum
-        [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs);
+        [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, h, wws, wVs);
         if ~isnan(i)
-            [X, DL, A] = greedy(X, DL, A, dDL, s, offset, i - offset, up, h, wws, wVs);
-            [X, DL, A] = greedy(X, DL, A, dDL, s, i, T - i + offset, up, h, wws, wVs);
+            [X, DL, A] = greedy(X, DL, A, dDL, s, offset, i - offset, h, wws, wVs);
+            [X, DL, A] = greedy(X, DL, A, dDL, s, i, T - i + offset, h, wws, wVs);
         end
     else
         % regular loop greedily searching maximum
         i = 0;
         while ~isnan(i)
-            [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs);
+            [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, h, wws, wVs);
         end
     end
 end
 
 
-function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
+function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, h, wws, wVs)
     % [m, i, j] = findmax(DL, offset, T) finds the maximum change of the
     %   log-posterior (DL) achieved by inserting or removing a spike in the
     %   interval DL(offset + (1 : T), :) and returns indices i and j.
     
-    Tdt = ceil(size(X, 1) / size(dDL, 4));
-    ns = numel(s) - 1;
+    Tdt = ceil(size(X, 1) / size(dDL, 5));
+    p = size(dDL, 4);
     [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
     pad = (size(h, 1) - 1) / 2;
     if m > 0
@@ -472,7 +473,7 @@ function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
             dl = DL(i + (-pad : pad), j)' * h;
             [~, r] = max(dl);
             a = A(i + (-pad : pad), j)' * h(:, r);
-            r = (r - fix(up / 2) - 1) / up;
+            r = (r - fix(p / 2) - 1) / p;
             % real part: amplitude
             % imaginary part: subsample (> 0 => shift right, < 0 => shift left)
             X(i, j) = a + 1i * r;
@@ -483,24 +484,15 @@ function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
             X(i, j) = 0;
         end
         DLij = DL(i, j);
-        sub = up + 1 - round(r * up);
+        sub = ceil(p / 2) - round(r * p);
         sgn = 2 * (X(i, j) > 0) - 1;
         t = ceil(i / Tdt);
-        dA = bsxfun(@times, dDL(sub + (0 : ns) * up, :, j, t), a * sgn ./ wws(t, :));
+        dA = bsxfun(@times, dDL(:, :, j, sub, t), a * sgn ./ wws(t, :));
         A(i + s, :) = A(i + s, :) - dA;
-        DL(i + s, :) = DL(i + s, :) - dA .* (wVs(i + s, :) + a * dDL(sub + (0 : ns) * up, :, j, t));
+        DL(i + s, :) = DL(i + s, :) - dA .* (wVs(i + s, :) + a * dDL(:, :, j, sub, t));
         DL(i, j) = -DLij;
     else
         i = NaN;
     end
-end
-
-
-function y = upsample(x, k)
-    % y = upsample(x, up) up-samples vector x k times by inserting zeros.
-    
-    n = numel(x);
-    y = zeros((n - 1) * k + 1, 1);
-    y((0 : n - 1) * k + 1) = x;
 end
 
