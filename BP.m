@@ -78,7 +78,8 @@ classdef BP
             len = 2 * n * p + 1;
             f = 1 / p;
             h = p * firls(len - 1, [0 f f 1], [1 1 0 0])' .* kaiser(len, 5);
-            self.upsamplingFilter = [zeros(p, 1); h; zeros(p, 1)];
+            h = [zeros(fix(p / 2), 1); h; zeros(fix(p / 2), 1)];
+            self.upsamplingFilter = reshape(h, p, 2 * n + 1)';
             self.upsamplingFilterOrder = n;
         end
         
@@ -355,8 +356,8 @@ classdef BP
             end
             
             % greedy search for flips with largest change in posterior
-            win = self.upsamplingFilter(p + 1 : end - p);
-            Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, win, wws, wVs);
+            h = fliplr(self.upsamplingFilter);
+            Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, h, wws, wVs);
         end
         
         
@@ -369,8 +370,7 @@ classdef BP
                 shape = 'same';
             end
             p = self.upsamplingFactor;
-            n = numel(self.upsamplingFilter) - 2 * p;
-            h = self.upsamplingFilter((p + k) + (1 : p : n));
+            h = self.upsamplingFilter(:, ceil(p / 2) + k);
             y = convn(x, h, shape);
         end
         
@@ -378,7 +378,7 @@ classdef BP
 end
 
 
-function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, up, win, wws, wVs)
+function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
     % [X, DL, A] = greedy(X, DL, A, dDL, offset, T) performs a greedy
     %   search for flips with largest change in posterior. We use a divide
     %   & conquer approach, splitting the data at the maximum and
@@ -388,22 +388,22 @@ function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, up, win, wws, wVs)
     Tmax = 10000;
     if T > Tmax
         % divide & conquer: split at current maximum
-        [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, win, wws, wVs);
+        [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs);
         if ~isnan(i)
-            [X, DL, A] = greedy(X, DL, A, dDL, s, offset, i - offset, up, win, wws, wVs);
-            [X, DL, A] = greedy(X, DL, A, dDL, s, i, T - i + offset, up, win, wws, wVs);
+            [X, DL, A] = greedy(X, DL, A, dDL, s, offset, i - offset, up, h, wws, wVs);
+            [X, DL, A] = greedy(X, DL, A, dDL, s, i, T - i + offset, up, h, wws, wVs);
         end
     else
         % regular loop greedily searching maximum
         i = 0;
         while ~isnan(i)
-            [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, win, wws, wVs);
+            [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs);
         end
     end
 end
 
 
-function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, win, wws, wVs)
+function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, h, wws, wVs)
     % [m, i, j] = findmax(DL, offset, T) finds the maximum change of the
     %   log-posterior (DL) achieved by inserting or removing a spike in the
     %   interval DL(offset + (1 : T), :) and returns indices i and j.
@@ -411,18 +411,15 @@ function [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, up, win, wws, wVs)
     Tdt = ceil(size(X, 1) / size(dDL, 4));
     ns = numel(s) - 1;
     [m, ndx] = max(reshape(DL(offset + (1 : T), :), [], 1));
+    pad = (size(h, 1) - 1) / 2;
     if m > 0
         i = offset + rem(ndx - 1, T) + 1;
         j = ceil(ndx / T);
         if X(i, j) == 0
             % add spike - subsample
-            pad = (numel(win) - 1) / up / 2 + 1;
-            dl = upsample(DL(i + (-pad : pad), j), up);
-            dl = conv(dl(ceil(up / 2) + 1 : end - ceil(up / 2)), win, 'valid');
+            dl = DL(i + (-pad : pad), j)' * h;
             [~, r] = max(dl);
-            a = upsample(A(i + (-pad : pad), j), up);
-            a = conv(a(ceil(up / 2) + 1 : end - ceil(up / 2)), win, 'valid');
-            a = a(r);
+            a = A(i + (-pad : pad), j)' * h(:, r);
             r = (r - fix(up / 2) - 1) / up;
             % real part: amplitude
             % imaginary part: subsample (> 0 => shift right, < 0 => shift left)
