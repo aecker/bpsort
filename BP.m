@@ -355,8 +355,7 @@ classdef BP
             end
             
             % greedy search for flips with largest change in posterior
-            win = gausswin(4 * p + 1, 3.5);
-            win = win / sum(win) * p;
+            win = self.upsamplingFilter(p + 1 : end - p);
             Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, win, wws, wVs);
         end
         
