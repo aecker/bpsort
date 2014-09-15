@@ -58,9 +58,9 @@ classdef BP
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('pruning', 1);
             p.addOptional('passband', [0.6 5] / 12);
-            p.addOptional('dt', 30);
+            p.addOptional('dt', 20);
             p.addOptional('driftRate', 0.1);
-            p.addOptional('sigmaAmpl', 0.1);
+            p.addOptional('sigmaAmpl', 0.05);
             p.addOptional('splitMinDPrime', 1);
             p.addOptional('splitMinPrior', 0.05);
             p.addOptional('splitMinRate', 0.1);
