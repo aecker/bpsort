@@ -161,18 +161,10 @@ classdef BP
             x = x(valid(order));
             
             borders = zeros(1, Ndt + 1);
-            chunk = 1;
-            k = 1;
-            while chunk < Ndt && k <= numel(i)
-                if i(k) > chunk * Tdt
-                    n = ceil(i(k) / Tdt) - chunk;
-                    borders(chunk + (1 : n)) = k - 1;
-                    chunk = chunk + n;
-                end
-                k = k + 1;
+            for t = 1 : Ndt
+                borders(t + 1) = find(i <= t * Tdt, 1, 'last');
             end
-            borders(chunk + 1 : end) = numel(i);
-
+            
             W = zeros(D * M, K, Ndt);
             Q = eye(D * M) * self.driftRate ^ 2;
             
