@@ -68,7 +68,7 @@ figure(2), clf
 ndx = 1 : 1e6;
 spacing = 200;
 smp = bp.samples;
-plot(bsxfun(@plus, V(ndx, :), (1 : K) * spacing), 'k')
+plot(ndx, bsxfun(@plus, V(ndx, :), (1 : K) * spacing), 'k')
 hold on
 c = hsv(M);
 for i = 1 : M
@@ -77,7 +77,7 @@ for i = 1 : M
     ampl = real(Xn(spikes));
     for j = 1 : numel(spikes)
         t = ceil(spikes(j) / Tt);
-        plot(spikes(j) + smp, bsxfun(@plus, ampl(j) * W(:, :, i, t), (1 : K) * spacing), 'color', c(i, :))
+        plot(ndx(1) - 1 + spikes(j) + smp, bsxfun(@plus, ampl(j) * W(:, :, i, t), (1 : K) * spacing), 'color', c(i, :))
     end
 end
 set(gca, 'color', 0.5 * ones(1, 3))
@@ -104,10 +104,10 @@ for i = 1 : M
     bic(i, 1) = sum((a - mean(a)) .^ 2 / sd + log(2 * pi * sd)) + 2 * log(numel(a));
 end
 dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
+split = find(bic(:, 1) > bic(:, 2) & dprime > 1);
 
 
 %%
-split = find(bic(:, 1) > bic(:, 2) & dprime > 1);
 for j = split'
     ndx = find(X(:, j));
     i = ndx(cl{j} == 1);
