@@ -103,8 +103,10 @@ for i = 1 : M
     sd = var(a);
     bic(i, 1) = sum((a - mean(a)) .^ 2 / sd + log(2 * pi * sd)) + 2 * log(numel(a));
 end
+rate = full(sum(real(X) > 0, 1))' / (size(V, 1) / Fs);
 dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
-split = find(bic(:, 1) > bic(:, 2) & dprime > 1);
+split = find(bic(:, 1) > bic(:, 2) & dprime > 1 & ...
+             min(prior, [], 2) > 0.05 & rate > 0.1);
 
 
 %%
