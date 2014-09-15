@@ -22,6 +22,9 @@ classdef BP
         dt          % time window for tracking waveform drift (sec)
         driftRate   % waveform drift rate (muV, SD per time step)
         sigmaAmpl   % SD of waveform amplitudes (muV)
+        splitMinDPrime  % Min d' on aomplitudes for splitting a cluster
+        splitMinPrior   % Min prior prob ob second component for splitting
+        splitMinRate    % Min firing rate for splitting
         D           % # dimensions
     end
     
@@ -58,6 +61,9 @@ classdef BP
             p.addOptional('dt', 30);
             p.addOptional('driftRate', 0.1);
             p.addOptional('sigmaAmpl', 0.1);
+            p.addOptional('splitMinDPrime', 1);
+            p.addOptional('splitMinPrior', 0.05);
+            p.addOptional('splitMinRate', 0.1);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -71,6 +77,9 @@ classdef BP
             self.dt = p.Results.dt;
             self.driftRate = p.Results.driftRate;
             self.sigmaAmpl = p.Results.sigmaAmpl;
+            self.splitMinDPrime = p.Results.splitMinDPrime;
+            self.splitMinPrior = p.Results.splitMinPrior;
+            self.splitMinRate = p.Results.splitMinRate;
             
             % design filter for resampling
             p = self.upsamplingFactor;
@@ -115,14 +124,22 @@ classdef BP
             %                           M: number of neurons
 
             if nargin < 4
-                iter = 3;
+                iter = 2;
             end
-            for i = 1 : iter
-                W = self.estimateWaveforms(V, X);
-                R = self.residuals(V, X, W);
-                Vw = self.whitenData(V, R);
-                Ww = self.estimateWaveforms(Vw, X, self.pruning);
-                X = self.estimateSpikes(Vw, X, Ww);
+            done = false;
+            while ~done
+                % fit model with current number of templates
+                for i = 1 : iter
+                    W = self.estimateWaveforms(V, X);
+                    R = self.residuals(V, X, W);
+                    Vw = self.whitenData(V, R);
+                    Ww = self.estimateWaveforms(Vw, X, self.pruning);
+                    X = self.estimateSpikes(Vw, X, Ww);
+                end
+                
+                % split clusters with bimodal amplitude distribution
+                [X, split] = self.splitClusters(X);
+                done = isempty(split);
             end
             W = self.estimateWaveforms(V, X);
         end
@@ -350,6 +367,49 @@ classdef BP
             % greedy search for flips with largest change in posterior
             h = fliplr(self.upsamplingFilter);
             Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, p, h, wws, wVs);
+        end
+        
+        
+        function [X, split] = splitClusters(self, X)
+            % Split clusters with bimodal amplitude distribution
+            
+            % Fit mixture of two Gaussians and compare to single Gaussian
+            [T, M] = size(X);
+            K = 2;
+            mu = zeros(M, K);
+            sigma = zeros(M, 1);
+            prior = zeros(M, K);
+            cl = cell(1, K);
+            bic = zeros(M, 2);
+            for j = 1 : M
+                a = full(real(X(X(:, j) > 0, j)));
+                [mu(j, :), sigma(j), prior(j, :), cl{j}, bic(j, 2)] = mog1d(a, K, 100);
+                % BIC for single Gaussian
+                sd = var(a);
+                bic(j, 1) = sum((a - mean(a)) .^ 2 / sd + log(2 * pi * sd)) + 2 * log(numel(a));
+            end
+            rate = full(sum(real(X) > 0, 1))' / (T / self.Fs);
+            dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
+            split = find(bic(:, 1) > bic(:, 2) & ...
+                         dprime > self.splitMinDPrime & ...
+                         min(prior, [], 2) > self.splitMinPrior & ...
+                         rate > self.splitMinRate);
+            
+            % split clusters and renormalize waveform templates
+            for j = split'
+                ndx = find(X(:, j));
+                i = ndx(cl{j} == 1);
+                X(i, j) = X(i, j) / mean(X(i, j));
+                i = ndx(cl{j} == 2);
+                X(i, end + 1) = X(i, j) / mean(X(i, j)); %#ok
+                X(i, j) = 0;
+            end
+            
+            % normalize non-splitted clusters
+            for j = setdiff(1 : M, split)
+                i = find(X(:, j));
+                X(i, j) = X(i, j) / mean(X(i, j));
+            end
         end
         
         
