@@ -2,13 +2,17 @@
 
 
 %% Read probe configuration
-config = 'V1x32-Poly2';
-fid = fopen(config);
+configFile = 'V1x32-Poly2';
+fid = fopen(configFile);
 if fid
-    channels = fscanf(fid, '%d');
+    data = fscanf(fid, '%d\t%g\t%g\n');
+    config.name = configFile;
+    config.channels = data(1 : 3 : end);
+    config.x = data(2 : 3 : end);
+    config.y = data(3 : 3 : end);
     fclose(fid);
 else
-    error('Could not open config file %s!', config)
+    error('Could not open config file %s!', configFile)
 end
 
 
