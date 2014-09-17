@@ -3,7 +3,7 @@
 
 %% Read probe configuration
 configFile = 'V1x32-Poly2';
-config = readConfig(configFile);
+layout = Layout(configFile);
 
 
 %% Create channel groups
