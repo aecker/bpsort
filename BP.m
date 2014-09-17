@@ -9,6 +9,7 @@
 
 classdef BP
     properties %#ok<*PROP>
+        layout      % geometrical layout of the electrode (see Layout class)
         window      % window for extracting waveform: [a b] ms
         samples     % samples corresponding to waveform window
         Fs          % sampling rate
@@ -30,7 +31,7 @@ classdef BP
     
     methods
         
-        function self = BP(varargin)
+        function self = BP(layout, varargin)
             % BP constructor
             %   bp = BP('param1', value1, 'param2', value2, ...) constructs
             %   a BP object with the following optional parameters:
@@ -80,6 +81,13 @@ classdef BP
             self.splitMinDPrime = p.Results.splitMinDPrime;
             self.splitMinPrior = p.Results.splitMinPrior;
             self.splitMinRate = p.Results.splitMinRate;
+            
+            % store or read electrode layout
+            if isa(layout, 'Layout')
+                self.layout = layout;
+            else
+                self.layout = Layout(layout);
+            end
             
             % design filter for resampling
             p = self.upsamplingFactor;
