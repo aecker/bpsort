@@ -51,10 +51,16 @@ end
 
 
 %% remove doubles
-X = keepMaxClusters(results, round(Fs * T * 60), 0.6);
+X0 = keepMaxClusters(results, round(Fs * T * 60), 0.6);
+
+
+%% pick only first part of the dataset
+T = 2 * 60 * Fs; 
+V = V(1 : T, :);
+X0 = X0(1 : T, :);
+X0 = X0(:, sum(real(X0) > 0, 1) > 10);
 
 
 %% extract spikes
-pass = [600 5000] / (Fs / 2);   % passband
-bp = BP('window', [-1 2], 'Fs', Fs, 'passband', pass, 'tempFiltLen', 0.5);
-[X, W] = bp.fit(V, X, 3);
+bp = BP;
+[X, W] = bp.fit(V, X0);
