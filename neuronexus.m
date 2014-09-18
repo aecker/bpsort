@@ -125,5 +125,6 @@ plotWaveforms(Wp(:, (config.channels), sua(1 : end - 1) + 1, end), 'spacing', 50
 %% Plot traces with spikes overlaid
 s = 1219200;
 N = 20000;
+bp = BP;
 plotTracesWithSingleUnits(V, X, Wp, bp, config, sua, s, N, 12)
 
