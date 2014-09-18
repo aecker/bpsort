@@ -156,7 +156,7 @@ classdef BP
 
                 % prune waveforms and estimate spikes
                 Ww = self.pruneWaveforms(Ww);
-                X = self.estimateSpikes(Vw, X, Ww);
+                [X, priors] = self.estimateSpikes(Vw, Ww, priors);
                 
                 % split templates with bimodal amplitude distribution
                 [X, split] = self.splitTemplates(X);
@@ -331,14 +331,14 @@ classdef BP
         end
         
         
-        function Xn = estimateSpikes(self, V, X, W)
+        function [X, priors] = estimateSpikes(self, V, W, priors)
             % Estimate spike times given waveform templates.
-            %   X = self.estimateSpikes(V, X, W) estimates the spike times
-            %   given the current estimate of the waveforms using binary
-            %   pursuit.
+            %   [X, priors] = self.estimateSpikes(V, W, priors) estimates
+            %   the spike times given the current estimate of the waveforms
+            %   using binary pursuit.
 
             [T, K] = size(V);
-            M = size(X, 2);
+            M = numel(priors);
             Tdt = self.dt * self.Fs;
             Ndt = ceil(T / Tdt);
             DL = zeros(T, M);
@@ -353,8 +353,7 @@ classdef BP
                 Wt = W(:, :, :, t);
                 
                 % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
-                r = sum(X > 0, 1) / T;
-                gamma = log(1 - r) - log(r);
+                gamma = log(1 - priors) - log(priors);
                 ww = permute(sum(sum(Wt .^ 2, 1), 2), [1 3 2]);
                 convVW = 0;
                 for k = 1 : K
@@ -387,7 +386,8 @@ classdef BP
             
             % greedy search for flips with largest change in posterior
             h = fliplr(self.upsamplingFilter);
-            Xn = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, h, wws, wVs);
+            X = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, h, wws, wVs);
+            priors = sum(X > 0, 1) / T;
         end
         
         
