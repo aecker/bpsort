@@ -28,6 +28,7 @@ classdef BP
         pruningRadius       % radius for smoothing before pruning
         pruningCtrWeight    % center weight of smoothing filter
         pruningThreshold    % pruning threshold
+        mergeThreshold
         D           % # dimensions
     end
     
@@ -69,6 +70,7 @@ classdef BP
             p.addOptional('pruningRadius', 1);
             p.addOptional('pruningCtrWeight', 1);
             p.addOptional('pruningThreshold', 1);
+            p.addOptional('mergeThreshold', 0.95);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -87,6 +89,7 @@ classdef BP
             self.pruningRadius = p.Results.pruningRadius;
             self.pruningCtrWeight = p.Results.pruningCtrWeight;
             self.pruningThreshold = p.Results.pruningThreshold;
+            self.mergeThreshold = p.Results.mergeThreshold;
             
             % store or read electrode layout
             if isa(layout, 'Layout')
@@ -152,7 +155,7 @@ classdef BP
                 Ww = self.estimateWaveforms(Vw, X);
                 
                 % merge templates that are too similar
-                [X, Ww, merged] = self.mergeTemplates(X, Ww);
+                [Ww, priors, merged] = self.mergeTemplates(Ww, priors);
 
                 % prune waveforms and estimate spikes
                 Ww = self.pruneWaveforms(Ww);
@@ -388,6 +391,52 @@ classdef BP
             h = fliplr(self.upsamplingFilter);
             X = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, h, wws, wVs);
             priors = sum(X > 0, 1) / T;
+        end
+        
+        
+        function [W, priors, merged] = mergeTemplates(self, W, priors)
+            % Merge templates with similar waveforms.
+            %   [W, priors, merged] = bp.mergeTemplates(W, priors) merges
+            %   all templates in W whose maximal cross-correlation is
+            %   greater than bp.mergeThreshold times the squared norm of
+            %   the larger waveform.
+            
+            [D, K, M, N] = size(W);
+            p = self.upsamplingFactor;
+            h = self.upsamplingFilter;
+            W = permute(W, [1 2 4 3]);
+            W = reshape(W, [], M);
+            nrm = sum(W .* W, 1);
+            lag = 2;
+            xcp = zeros(p, 2 * lag + 1);
+            merged = false;
+            i = 1;
+            while i < M
+                XC = zeros(1, M - i);
+                for j = i + 1 : M
+                    xc = xcorr(W(:, i), W(:, j), self.upsamplingFilterOrder + lag);
+                    for k = 1 : 2 * lag + 1
+                        xcp(:, k) = xc(2 * lag + 2 - k : end - k + 1)' * h;
+                    end
+                    XC(j - i) = max(xcp(:));
+                end
+                XC = XC ./ max(nrm(i), nrm(i + 1 : M));
+                merge = i + [0, find(XC > self.mergeThreshold)];
+                if numel(merge) > 1
+                    [~, ndx] = max(priors(merge));
+                    W(:, i) = W(:, merge(ndx));
+                    W(:, merge(2 : end)) = [];
+                    priors(i) = sum(priors(merge));
+                    priors(merge(2 : end)) = [];
+                    nrm(i) = nrm(merge(ndx));
+                    nrm(merge(2 : end)) = [];
+                    M = numel(priors);
+                    merged = true;
+                end
+                i = i + 1;
+            end
+            W = reshape(W, [D K N M]);
+            W = permute(W, [1 2 4 3]);
         end
         
         
