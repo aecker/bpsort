@@ -145,8 +145,9 @@ classdef BP
             end
             split = true;
             merged = true;
+            priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
-            while i < iter && split && merged
+            while i < iter || split || merged
                 
                 % estimate waveforms in whitened space
                 W = self.estimateWaveforms(V, X);
@@ -491,22 +492,21 @@ classdef BP
             [~, K, M, ~] = size(W);
             
             % smooth with adjacent channels
-            x = self.layout.x;
-            y = self.layout.y;
             nrm = zeros(K, M);
             N = 0;
+            h = zeros(1, K);
             for k = 1 : K
-                neighbors = (x - x(k)) .^ 2 + (y - y(k)) .^ 2 < radius ^ 2;
-                h = neighbors * (1 - self.pruningCtrWeight) / (sum(neighbors) - 1);
+                neighbors = self.layout.neighbors(k, self.pruningRadius);
+                h(neighbors) = (1 - self.pruningCtrWeight) / numel(neighbors);
                 h(k) = self.pruningCtrWeight;
                 nrm(k, :) = sqrt(max(sum(sum(bsxfun(@times, h, W), 2) .^ 2, 1), [], 4));
-                N = max(N, sum(neighbors) - 1);
+                N = max(N, numel(neighbors));
             end
             
             % find contiguous region around maximum above threshold
             for m = 1 : M
                 [mx, peak] = max(nrm(:, m));
-                active = false(1, K);
+                active = false(K, 1);
                 if mx > self.pruningThreshold
                     neighbors = peak;
                     active(neighbors) = true;
@@ -515,10 +515,10 @@ classdef BP
                 end
                 while ~isempty(neighbors)
                     newNeighbors = false;
-                    for k = neighbors
+                    for k = neighbors(:)'
                         newNeighbors = newNeighbors | ...
-                            (self.layout.neighbors(k, self.pruningRadius) ...
-                                & nrm(:, m)' > self.pruningThreshold & ~active);
+                            (self.layout.isNeighbor(1 : K, k, self.pruningRadius) ...
+                                & nrm(:, m) > self.pruningThreshold & ~active);
                     end
                     neighbors = find(newNeighbors);
                     active(neighbors) = true;
