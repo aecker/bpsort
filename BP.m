@@ -140,25 +140,41 @@ classdef BP
             if nargin < 4
                 iter = 2;
             end
-            done = false;
-            while ~done
-                % fit model with current number of templates
-                W = self.estimateWaveforms(V, X);
+            
+            % initial model fit in non-whitened space
+            W = self.estimateWaveforms(V, X);
+            
+            split = true;
+            while true
+                
+                % whitening
                 R = self.residuals(V, X, W);
                 Vw = self.whitenData(V, R);
+                
+                % fit model by alternating between X and W
                 for i = 1 : iter
                     Ww = self.estimateWaveforms(Vw, X);
                     Ww = self.pruneWaveforms(Ww);
                     X = self.estimateSpikes(Vw, X, Ww);
                 end
                 
+                if ~split
+                    break
+                end
+                
                 % split clusters with bimodal amplitude distribution
-                [X, split] = self.splitClusters(X);
-                done = isempty(split);
+                [X, split] = self.splitTemplates(X);
+                
+                % Re-estimate non-whitened waveforms
+                W = self.estimateWaveforms(V, X);
+                
+                % merge templates that are too similar
+                [X, merged] = self.mergeTemplates(X, W);
+                
+                if ~split && ~merged
+                    break
+                end
             end
-            
-            % Re-estimate non-whitened waveforms
-            W = self.estimateWaveforms(V, X);
             
             % Apply same pruning as to whitened waveforms
             zero = max(sum(abs(Ww), 1), [], 4) < 1e-6;
@@ -383,8 +399,8 @@ classdef BP
         end
         
         
-        function [X, split] = splitClusters(self, X)
-            % Split clusters with bimodal amplitude distribution
+        function [X, split] = splitTemplates(self, X)
+            % Split templates with bimodal amplitude distribution
             
             % Fit mixture of two Gaussians and compare to single Gaussian
             [T, M] = size(X);
@@ -423,6 +439,8 @@ classdef BP
                 i = find(X(:, j));
                 X(i, j) = X(i, j) / mean(X(i, j));
             end
+            
+            split = ~isempty(split);
         end
         
         
