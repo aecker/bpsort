@@ -19,7 +19,7 @@ classdef Layout
             %   x coordinates, the second column the y coordinates. The
             %   n^th row contains the coordinates for the n^th channel.
             
-            assert(isnnumeric(in) || ischar(in), 'Input must be either a config file name or an N-by-2 matrix!')
+            assert(isnumeric(in) || ischar(in), 'Input must be either a config file name or an N-by-2 matrix!')
             if ischar(in)
                 file = in;
                 fid = fopen(file);
