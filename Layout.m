@@ -59,6 +59,18 @@ classdef Layout
             [~, order] = sort(k);
         end
         
+        function k = neighbors(self, i, d)
+            % Return list of neighbors
+            %   k = neighbors(self, i, d) returns a list of neighbors for
+            %   channel i, defined as those channels with a distance less
+            %   than d (excluding channel i itself).
+            
+            x = self.x;
+            y = self.y;
+            k = find((x - x(i)) .^ 2 + (y - y(i)) .^ 2 < d ^ 2);
+            k = setdiff(k, i);
+        end
+        
         function plot(self, hdl)
             % Plot layout.
             %   layout.plot() plots the layout of the probe.

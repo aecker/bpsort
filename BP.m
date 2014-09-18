@@ -18,7 +18,6 @@ classdef BP
         upsamplingFactor  % upsampling factor for spike times
         upsamplingFilter        % filter used for subsampling
         upsamplingFilterOrder   % filter order (for subsampling filter)
-        pruning     % pruning threshold for subset selection on waveforms
         passband    % passband of continuous input signal
         dt          % time window for tracking waveform drift (sec)
         driftRate   % waveform drift rate (muV, SD per time step)
@@ -26,6 +25,9 @@ classdef BP
         splitMinDPrime  % Min d' on aomplitudes for splitting a cluster
         splitMinPrior   % Min prior prob ob second component for splitting
         splitMinRate    % Min firing rate for splitting
+        pruningRadius       % radius for smoothing before pruning
+        pruningCtrWeight    % center weight of smoothing filter
+        pruningThreshold    % pruning threshold
         D           % # dimensions
     end
     
@@ -57,7 +59,6 @@ classdef BP
             p.addOptional('verbose', false);
             p.addOptional('tempFiltLen', 0.5);
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
-            p.addOptional('pruning', 1);
             p.addOptional('passband', [0.6 5] / 12);
             p.addOptional('dt', 20);
             p.addOptional('driftRate', 0.1);
@@ -65,6 +66,9 @@ classdef BP
             p.addOptional('splitMinDPrime', 1);
             p.addOptional('splitMinPrior', 0.05);
             p.addOptional('splitMinRate', 0.1);
+            p.addOptional('pruningRadius', 1);
+            p.addOptional('pruningCtrWeight', 1);
+            p.addOptional('pruningThreshold', 1);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -73,7 +77,6 @@ classdef BP
             self.verbose = p.Results.verbose;
             self.tempFiltLen = p.Results.tempFiltLen;
             self.upsamplingFactor = p.Results.upsamplingFactor;
-            self.pruning = p.Results.pruning;
             self.passband = p.Results.passband;
             self.dt = p.Results.dt;
             self.driftRate = p.Results.driftRate;
@@ -81,6 +84,9 @@ classdef BP
             self.splitMinDPrime = p.Results.splitMinDPrime;
             self.splitMinPrior = p.Results.splitMinPrior;
             self.splitMinRate = p.Results.splitMinRate;
+            self.pruningRadius = p.Results.pruningRadius;
+            self.pruningCtrWeight = p.Results.pruningCtrWeight;
+            self.pruningThreshold = p.Results.pruningThreshold;
             
             % store or read electrode layout
             if isa(layout, 'Layout')
@@ -137,11 +143,12 @@ classdef BP
             done = false;
             while ~done
                 % fit model with current number of templates
+                W = self.estimateWaveforms(V, X);
+                R = self.residuals(V, X, W);
+                Vw = self.whitenData(V, R);
                 for i = 1 : iter
-                    W = self.estimateWaveforms(V, X);
-                    R = self.residuals(V, X, W);
-                    Vw = self.whitenData(V, R);
-                    Ww = self.estimateWaveforms(Vw, X, self.pruning);
+                    Ww = self.estimateWaveforms(Vw, X);
+                    Ww = self.pruneWaveforms(Ww);
                     X = self.estimateSpikes(Vw, X, Ww);
                 end
                 
@@ -149,19 +156,21 @@ classdef BP
                 [X, split] = self.splitClusters(X);
                 done = isempty(split);
             end
+            
+            % Re-estimate non-whitened waveforms
             W = self.estimateWaveforms(V, X);
+            
+            % Apply same pruning as to whitened waveforms
+            zero = max(sum(abs(Ww), 1), [], 4) < 1e-6;
+            W = bsxfun(@times, W, zero);
         end
         
         
-        function W = estimateWaveforms(self, V, X, pruning)
+        function W = estimateWaveforms(self, V, X)
             % Estimate waveform templates given spike times.
             %   W = self.estimateWaveforms(V, X) estimates the waveforms W
             %   given the observed voltage V and the current estimate of
             %   the spike times X.
-            %
-            %   W = self.estimateWaveforms(V, X, pruning) applies subset
-            %   selection on the waveforms using the given pruning factor
-            %   (multiples of the noise amplitude).
             
             [T, K] = size(V);
             M = size(X, 2);
@@ -245,11 +254,6 @@ classdef BP
             % Re-organize waveforms by cluster
             W = reshape(W, [D M K Ndt]);
             W = permute(W, [1 3 2 4]);
-            
-            % subset selection of waveforms
-            if nargin > 3 && pruning > 0
-                W(:, sqrt(sum(W .^ 2, 1)) < pruning) = 0;
-            end
         end
         
         
@@ -418,6 +422,56 @@ classdef BP
             for j = setdiff(1 : M, split)
                 i = find(X(:, j));
                 X(i, j) = X(i, j) / mean(X(i, j));
+            end
+        end
+        
+        
+        function W = pruneWaveforms(self, W)
+            % Prune waveforms.
+            
+            [~, K, M, ~] = size(W);
+            
+            % smooth with adjacent channels
+            x = self.layout.x;
+            y = self.layout.y;
+            nrm = zeros(K, M);
+            N = 0;
+            for k = 1 : K
+                neighbors = (x - x(k)) .^ 2 + (y - y(k)) .^ 2 < radius ^ 2;
+                h = neighbors * (1 - self.pruningCtrWeight) / (sum(neighbors) - 1);
+                h(k) = self.pruningCtrWeight;
+                nrm(k, :) = sqrt(max(sum(sum(bsxfun(@times, h, W), 2) .^ 2, 1), [], 4));
+                N = max(N, sum(neighbors) - 1);
+            end
+            
+            % find contiguous region around maximum above threshold
+            for m = 1 : M
+                [mx, peak] = max(nrm(:, m));
+                active = false(1, K);
+                if mx > self.pruningThreshold
+                    neighbors = peak;
+                    active(neighbors) = true;
+                else
+                    neighbors = [];
+                end
+                while ~isempty(neighbors)
+                    newNeighbors = false;
+                    for k = neighbors
+                        newNeighbors = newNeighbors | ...
+                            (self.layout.neighbors(k, self.pruningRadius) ...
+                                & nrm(:, m)' > self.pruningThreshold & ~active);
+                    end
+                    neighbors = find(newNeighbors);
+                    active(neighbors) = true;
+                end
+                
+                % fill holes (channels below threshold where all neighbors are included)
+                for k = 1 : K
+                    neighbors = self.layout.neighbors(k, self.pruningRadius);
+                    active(k) = active(k) | sum(active(neighbors)) == N;
+                end
+                
+                W(:, ~active, m, :) = 0;
             end
         end
         
