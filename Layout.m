@@ -1,5 +1,5 @@
 classdef Layout
-    properties
+    properties  %#ok<*PROP>
         name    % name of the probe
         x       % x coordinates of the channels (top is zero, positive values go down)
         y       % y coordinates
@@ -69,6 +69,17 @@ classdef Layout
             y = self.y;
             k = find((x - x(i)) .^ 2 + (y - y(i)) .^ 2 < d ^ 2);
             k = setdiff(k, i);
+        end
+        
+        function b = isNeighbor(self, i, k, d)
+            % Test if channel i is neighbor of channel k.
+            %   b = neighbors(self, i, k, d) returns a true if channel i is
+            %   a neighbor of channel k. If either i or k is a vector a
+            %   vector of logicals is returned.
+            
+            x = self.x;
+            y = self.y;
+            b = (x(i) - x(k)) .^ 2 + (y(i) - y(k)) .^ 2 < d ^ 2;
         end
         
         function plot(self, hdl)
