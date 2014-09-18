@@ -140,43 +140,35 @@ classdef BP
             if nargin < 4
                 iter = 2;
             end
-            
-            % initial model fit in non-whitened space
-            W = self.estimateWaveforms(V, X);
-            
             split = true;
-            while true
+            merged = true;
+            i = 0;
+            while i < iter && split && merged
                 
-                % whitening
+                % estimate waveforms in whitened space
+                W = self.estimateWaveforms(V, X);
                 R = self.residuals(V, X, W);
                 Vw = self.whitenData(V, R);
-                
-                % fit model by alternating between X and W
-                for i = 1 : iter
-                    Ww = self.estimateWaveforms(Vw, X);
-                    Ww = self.pruneWaveforms(Ww);
-                    X = self.estimateSpikes(Vw, X, Ww);
-                end
-                
-                if ~split
-                    break
-                end
-                
-                % split clusters with bimodal amplitude distribution
-                [X, split] = self.splitTemplates(X);
-                
-                % Re-estimate non-whitened waveforms
-                W = self.estimateWaveforms(V, X);
+                Ww = self.estimateWaveforms(Vw, X);
                 
                 % merge templates that are too similar
-                [X, merged] = self.mergeTemplates(X, W);
+                [X, Ww, merged] = self.mergeTemplates(X, Ww);
+
+                % prune waveforms and estimate spikes
+                Ww = self.pruneWaveforms(Ww);
+                X = self.estimateSpikes(Vw, X, Ww);
                 
-                if ~split && ~merged
-                    break
-                end
+                % split templates with bimodal amplitude distribution
+                [X, split] = self.splitTemplates(X);
+                
+                % ensure we run a fixed number of iterations after the last
+                % splitting and/or merging operation
+                i = (~split & ~merged) * (i + 1);
             end
             
-            % Apply same pruning as to whitened waveforms
+            % Re-estimate non-whitened waveforms and apply the same pruning
+            % as to whitened waveforms
+            W = self.estimateWaveforms(V, X);
             zero = max(sum(abs(Ww), 1), [], 4) < 1e-6;
             W = bsxfun(@times, W, zero);
         end
