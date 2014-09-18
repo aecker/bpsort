@@ -68,8 +68,8 @@ classdef BP
             p.addOptional('splitMinPrior', 0.05);
             p.addOptional('splitMinRate', 0.1);
             p.addOptional('pruningRadius', 1);
-            p.addOptional('pruningCtrWeight', 1);
-            p.addOptional('pruningThreshold', 1);
+            p.addOptional('pruningCtrWeight', 0.7);
+            p.addOptional('pruningThreshold', 2);
             p.addOptional('mergeThreshold', 0.95);
             p.parse(varargin{:});
             self.window = p.Results.window;
