@@ -55,6 +55,5 @@ X0 = keepMaxClusters(results, round(Fs * T * 60), 0.6);
 
 
 %% extract spikes
-pass = [600 5000] / (Fs / 2);   % passband
 bp = BP('V1x32-Poly2', 'pruningRadius', 55);
 [X, W] = bp.fit(V, X0, 2);
