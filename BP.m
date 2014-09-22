@@ -163,7 +163,7 @@ classdef BP
                 [X, priors] = self.estimateSpikes(Vw, Ww, priors);
                 
                 % split templates with bimodal amplitude distribution
-                [X, split] = self.splitTemplates(X);
+                [X, priors, split] = self.splitTemplates(X, priors);
                 
                 % ensure we run a fixed number of iterations after the last
                 % splitting and/or merging operation
@@ -441,12 +441,13 @@ classdef BP
         end
         
         
-        function [X, split] = splitTemplates(self, X)
+        function [X, priors, split] = splitTemplates(self, X, priors)
             % Split templates with bimodal amplitude distribution
             
             % First remove unused templates
             n = full(sum(X > 0, 1));
             X(:, ~n) = [];
+            priors(~n) = [];
             
             % Fit mixture of two Gaussians and compare to single Gaussian
             [T, M] = size(X);
@@ -475,9 +476,12 @@ classdef BP
                 ndx = find(X(:, j));
                 i = ndx(cl{j} == 1);
                 X(i, j) = X(i, j) / mean(X(i, j));
+                pj = priors(j);
+                priors(j) = pj * prior(1);
                 i = ndx(cl{j} == 2);
                 X(i, end + 1) = X(i, j) / mean(X(i, j)); %#ok
                 X(i, j) = 0;
+                priors(end + 1) = pj * prior(2); %#ok
             end
             
             % normalize non-splitted clusters
