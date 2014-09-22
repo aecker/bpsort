@@ -444,6 +444,10 @@ classdef BP
         function [X, split] = splitTemplates(self, X)
             % Split templates with bimodal amplitude distribution
             
+            % First remove unused templates
+            n = full(sum(X > 0, 1));
+            X(:, ~n) = [];
+            
             % Fit mixture of two Gaussians and compare to single Gaussian
             [T, M] = size(X);
             K = 2;
@@ -459,7 +463,7 @@ classdef BP
                 sd = var(a);
                 bic(j, 1) = sum((a - mean(a)) .^ 2 / sd + log(2 * pi * sd)) + 2 * log(numel(a));
             end
-            rate = full(sum(real(X) > 0, 1))' / (T / self.Fs);
+            rate = n(n > 0)' / (T / self.Fs);
             dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
             split = find(bic(:, 1) > bic(:, 2) & ...
                          dprime > self.splitMinDPrime & ...
