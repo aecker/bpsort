@@ -2,3 +2,4 @@
 *.mat
 .*
 figures/*
+logs/*

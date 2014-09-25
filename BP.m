@@ -14,6 +14,8 @@ classdef BP
         samples     % samples corresponding to waveform window
         Fs          % sampling rate
         verbose     % verbose output during fitting?
+        logging     % log progress into file?
+        logFile
         tempFiltLen % length of temporal whitening filter (ms)
         upsamplingFactor  % upsampling factor for spike times
         upsamplingFilter        % filter used for subsampling
@@ -58,6 +60,7 @@ classdef BP
             p.addOptional('window', [-1 2]);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
+            p.addOptional('logging', false);
             p.addOptional('tempFiltLen', 0.5);
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('passband', [0.6 5] / 12);
@@ -77,6 +80,7 @@ classdef BP
             self.samples = round(self.window(1) * self.Fs / 1000) : round(self.window(2) * self.Fs / 1000);
             self.D = numel(self.samples);
             self.verbose = p.Results.verbose;
+            self.logging = p.Results.logging;
             self.tempFiltLen = p.Results.tempFiltLen;
             self.upsamplingFactor = p.Results.upsamplingFactor;
             self.passband = p.Results.passband;
@@ -107,6 +111,13 @@ classdef BP
             h = [zeros(fix(p / 2), 1); h; zeros(fix(p / 2), 1)];
             self.upsamplingFilter = reshape(h, p, 2 * n + 1)';
             self.upsamplingFilterOrder = n;
+            
+            % determine file name for log file
+            if self.logging
+                p = mfilename('fullpath');
+                ndx = find(p == filesep, 1, 'last');
+                self.logFile = [p(1 : ndx), 'logs', filesep, datestr(now, 'yyyymmdd_HHMMSS'), '.log'];
+            end
         end
         
         
@@ -140,6 +151,8 @@ classdef BP
             %                           K: number of channels
             %                           M: number of neurons
 
+            self.log('Starting to fit model\n')
+            t = now;
             if nargin < 4
                 iter = 2;
             end
@@ -168,6 +181,8 @@ classdef BP
                 % ensure we run a fixed number of iterations after the last
                 % splitting and/or merging operation
                 i = (~split & ~merged) * (i + 1);
+                
+                self.log('\n')
             end
             
             % Re-estimate non-whitened waveforms and apply the same pruning
@@ -175,6 +190,8 @@ classdef BP
             W = self.estimateWaveforms(V, X);
             zero = max(sum(abs(Ww), 1), [], 4) < 1e-6;
             W = bsxfun(@times, W, zero);
+            
+            self.log('Done fitting model [%ds]\n\n', (now - t) * 24 * 60 * 60)
         end
         
         
@@ -184,6 +201,7 @@ classdef BP
             %   given the observed voltage V and the current estimate of
             %   the spike times X.
             
+            self.log(false, 'Estimating waveforms... ')
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(self.samples);
@@ -266,6 +284,8 @@ classdef BP
             % Re-organize waveforms by cluster
             W = reshape(W, [D M K Ndt]);
             W = permute(W, [1 3 2 4]);
+            
+            self.log(true)
         end
         
         
@@ -276,6 +296,8 @@ classdef BP
             %   spatial and a temporal component. Whitening filters are
             %   estimated from the residuals R.
 
+            self.log(false, 'Whitening data... ')
+            
             % determine frequencies outside the passband to avoid
             % amplification of those frequencies
             q = round(self.tempFiltLen / 1000 * self.Fs);
@@ -307,6 +329,8 @@ classdef BP
             
             % spatial whitening
             V = V * chol(inv(cov(R)))';
+            
+            self.log(true)
         end
         
         
@@ -315,6 +339,7 @@ classdef BP
             %   R = self.residuals(V, X, W) computes the residuals by
             %   subtracting the model prediction X * W from the data V.
             
+            self.log(false, 'Computing residuals... ')
             T = size(V, 1);
             Tdt = self.dt * self.Fs;
             for i = 1 : size(X, 2)
@@ -332,6 +357,7 @@ classdef BP
                     V(samples(valid), :) = V(samples(valid), :) - a * abs(r) * W(valid, :, i, t);
                 end
             end
+            self.log(true)
         end
         
         
@@ -341,6 +367,7 @@ classdef BP
             %   the spike times given the current estimate of the waveforms
             %   using binary pursuit.
 
+            self.log(false, 'Estimating spike times... ')
             [T, K] = size(V);
             M = numel(priors);
             Tdt = self.dt * self.Fs;
@@ -392,6 +419,8 @@ classdef BP
             h = fliplr(self.upsamplingFilter);
             X = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, h, wws, wVs);
             priors = sum(X > 0, 1) / T;
+            
+            self.log(true)
         end
         
         
@@ -403,6 +432,7 @@ classdef BP
             %   the larger waveform.
             
             [D, K, M, N] = size(W);
+            self.log(false, 'Merging templates: %d -> ', M)
             p = self.upsamplingFactor;
             h = self.upsamplingFilter;
             W = permute(W, [1 2 4 3]);
@@ -438,11 +468,15 @@ classdef BP
             end
             W = reshape(W, [D K N M]);
             W = permute(W, [1 2 4 3]);
+            self.log('%d ', M)
+            self.log(true)
         end
         
         
         function [X, priors, split] = splitTemplates(self, X, priors)
             % Split templates with bimodal amplitude distribution
+            
+            self.log(false, 'Splitting templates: %d -> ', numel(priors))
             
             % First remove unused templates
             n = full(sum(X > 0, 1));
@@ -491,12 +525,16 @@ classdef BP
             end
             
             split = ~isempty(split);
+            
+            self.log('%d ', numel(priors))
+            self.log(true)
         end
         
         
         function W = pruneWaveforms(self, W)
             % Prune waveforms.
             
+            self.log(false, 'Pruning waveforms... ')
             [~, K, M, ~] = size(W);
             
             % smooth with adjacent channels
@@ -540,6 +578,7 @@ classdef BP
                 
                 W(:, ~active, m, :) = 0;
             end
+            self.log(true)
         end
         
         
@@ -554,6 +593,39 @@ classdef BP
             p = self.upsamplingFactor;
             h = self.upsamplingFilter(:, ceil(p / 2) + k);
             y = convn(x, h, shape);
+        end
+        
+    end
+    
+    
+    
+    methods (Access = private)
+        
+        function log(self, varargin)
+            
+            % first input numeric: 0 = starting / 1 = done with step
+            if islogical(varargin{1})
+                if ~varargin{1}
+                    varargin(1) = [];
+                    tic
+                else
+                    varargin{1} = 'done [%.1fs]\n';
+                    varargin{2} = toc;
+                end
+            end
+                    
+            % write to log file?
+            if self.logging
+                fid = fopen(self.logFile, 'a');
+                assert(fid > 0, 'Failed to open log file %s!', self.logFile)
+                fprintf(fid, varargin{:});
+                fclose(fid);
+            end
+
+            % print to command line?
+            if self.verbose
+                fprintf(varargin{:})
+            end
         end
         
     end
