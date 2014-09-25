@@ -156,16 +156,19 @@ classdef BP
             if nargin < 4
                 iter = 2;
             end
+            
+            % initial estimate of waveforms in non-whitened, whitening
+            W = self.estimateWaveforms(V, X);
+            R = self.residuals(V, X, W);
+            Vw = self.whitenData(V, R);
+            
             split = true;
             merged = true;
             priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
             while i < iter || split || merged
                 
-                % estimate waveforms in whitened space
-                W = self.estimateWaveforms(V, X);
-                R = self.residuals(V, X, W);
-                Vw = self.whitenData(V, R);
+                % estimate waveforms
                 Ww = self.estimateWaveforms(Vw, X);
                 
                 % merge templates that are too similar
