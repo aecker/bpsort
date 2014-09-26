@@ -531,17 +531,18 @@ classdef BP
         end
         
         
-        function [W, priors, merged] = mergeTemplates(self, W, priors)
+        function [U, priors, merged] = mergeTemplates(self, U, priors)
             % Merge templates with similar waveforms.
             %   [W, priors, merged] = bp.mergeTemplates(W, priors) merges
             %   all templates in W whose maximal cross-correlation is
             %   greater than bp.mergeThreshold times the squared norm of
             %   the larger waveform.
             
-            [D, K, M, N] = size(W);
+            M = size(U, 3);
             self.log(false, 'Merging templates: %d -> ', M)
             p = self.upsamplingFactor;
             h = self.upsamplingFilter;
+            W = self.waveforms(U);
             W = permute(W, [1 2 4 3]);
             W = reshape(W, [], M);
             nrm = sum(W .* W, 1);
@@ -562,8 +563,8 @@ classdef BP
                 merge = i + [0, find(XC > self.mergeThreshold)];
                 if numel(merge) > 1
                     [~, ndx] = max(priors(merge));
-                    W(:, i) = W(:, merge(ndx));
-                    W(:, merge(2 : end)) = [];
+                    U(:, :, i, :) = U(:, merge(ndx));
+                    U(:, :, merge(2 : end), :) = [];
                     priors(i) = sum(priors(merge));
                     priors(merge(2 : end)) = [];
                     nrm(i) = nrm(merge(ndx));
@@ -573,8 +574,6 @@ classdef BP
                 end
                 i = i + 1;
             end
-            W = reshape(W, [D K N M]);
-            W = permute(W, [1 2 4 3]);
             self.log('%d ', M)
             self.log(true)
         end
