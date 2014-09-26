@@ -128,12 +128,12 @@ classdef BP
         end
         
         
-        function [X, W] = fit(self, V, X, iter)
+        function [X, U] = fit(self, V, X, iter)
             % Fit model (i.e. estimate waveform templates and spike times).
-            %   [X, W] = self.fit(V, X0) fits the model to waveforms V
-            %   using the initial spike sorting results X0.
+            %   [X, U] = self.fit(V, X0) fits the model to voltage trace V
+            %   using the initial spike times X0.
             %
-            %   [X, W] = self.fit(V, X0, iter) uses the specified number of
+            %   [X, U] = self.fit(V, X0, iter) uses the specified number of
             %   iterations to fit the parameters (default = 3).
             %
             %   INPUTS
@@ -153,10 +153,10 @@ classdef BP
             %
             %   X       Spike times (same format as input X0)
             %
-            %   W       Array of waveforms 
-            %           D-by-K-by-M     D: number of samples
-            %                           K: number of channels
-            %                           M: number of neurons
+            %   U       Array of waveform coefficients
+            %           E-by-K-by-M    E: number of basis functions/samples
+            %                          K: number of channels
+            %                          M: number of neurons
 
             self.log('Starting to fit model\n')
             t = now;
@@ -165,8 +165,8 @@ classdef BP
             end
             
             % initial estimate of waveforms in non-whitened, whitening
-            W = self.estimateWaveforms(V, X);
-            R = self.residuals(V, X, W);
+            U = self.estimateWaveforms(V, X);
+            R = self.residuals(V, X, U);
             Vw = self.whitenData(V, R);
             
             split = true;
@@ -176,14 +176,14 @@ classdef BP
             while i < iter || split || merged
                 
                 % estimate waveforms
-                Ww = self.estimateWaveforms(Vw, X);
+                Uw = self.estimateWaveforms(Vw, X);
                 
                 % merge templates that are too similar
-                [Ww, priors, merged] = self.mergeTemplates(Ww, priors);
+                [Uw, priors, merged] = self.mergeTemplates(Uw, priors);
 
                 % prune waveforms and estimate spikes
-                Ww = self.pruneWaveforms(Ww);
-                [X, priors] = self.estimateSpikes(Vw, Ww, priors);
+                Uw = self.pruneWaveforms(Uw);
+                [X, priors] = self.estimateSpikes(Vw, Uw, priors);
                 
                 % split templates with bimodal amplitude distribution
                 [X, priors, split] = self.splitTemplates(X, priors);
@@ -197,9 +197,9 @@ classdef BP
             
             % Re-estimate non-whitened waveforms and apply the same pruning
             % as to whitened waveforms
-            W = self.estimateWaveforms(V, X);
-            zero = max(sum(abs(Ww), 1), [], 4) < 1e-6;
-            W = bsxfun(@times, W, zero);
+            U = self.estimateWaveforms(V, X);
+            zero = max(sum(abs(Uw), 1), [], 4) < 1e-6;
+            U = bsxfun(@times, U, zero);
             
             self.log('Done fitting model [%ds]\n\n', (now - t) * 24 * 60 * 60)
         end
@@ -637,11 +637,11 @@ classdef BP
         end
         
         
-        function W = pruneWaveforms(self, W)
+        function U = pruneWaveforms(self, U)
             % Prune waveforms.
             
             self.log(false, 'Pruning waveforms... ')
-            [~, K, M, ~] = size(W);
+            [~, K, M, ~] = size(U);
             
             % smooth with adjacent channels
             nrm = zeros(K, M);
@@ -651,7 +651,7 @@ classdef BP
                 neighbors = self.layout.neighbors(k, self.pruningRadius);
                 h(neighbors) = (1 - self.pruningCtrWeight) / numel(neighbors);
                 h(k) = self.pruningCtrWeight;
-                nrm(k, :) = sqrt(max(sum(sum(bsxfun(@times, h, W), 2) .^ 2, 1), [], 4));
+                nrm(k, :) = sqrt(max(sum(sum(bsxfun(@times, h, U), 2) .^ 2, 1), [], 4));
                 N = max(N, numel(neighbors));
             end
             
@@ -682,7 +682,7 @@ classdef BP
                     active(k) = active(k) | sum(active(neighbors)) == N;
                 end
                 
-                W(:, ~active, m, :) = 0;
+                U(:, ~active, m, :) = 0;
             end
             self.log(true)
         end
