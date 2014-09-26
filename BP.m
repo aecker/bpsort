@@ -245,17 +245,18 @@ classdef BP
             
             % Initialize
             MX1 = sparse(i(1 : borders(2)), j(1 : borders(2)), x(1 : borders(2)), Tdt, D * M);
+            % using pinv() instead of \ because MXprod can be rank-
+            % deficient if there are no or only few spikes for some neurons
+            W(:, :, 1) = pinv(MXprod(:, :, 1)) * (MX1' * V(1 : Tdt, :));
+            
+            % Initialize state covariance
             n = full(sum(MX1, 1));
-            idx = n > 0;
-            W(idx, :, 1) = MXprod(idx, idx, 1) \ (MX1(:, idx)' * V(1 : Tdt, :));
+            P = zeros(D * M, D * M, Ndt);
+            P(:, :, 1) = diag(1 ./ (n + ~n));
             
             % Go through all channels
             for k = 1 : K
                 
-                % Initialize state covariance
-                P = zeros(D * M, D * M, Ndt);
-                P(:, :, 1) = diag(1 ./ (n + ~n));
-            
                 % Forward pass
                 Pti = zeros(D * M, D * M, Ndt);
                 I = eye(D * M);
