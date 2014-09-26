@@ -31,6 +31,7 @@ classdef BP
         pruningCtrWeight    % center weight of smoothing filter
         pruningThreshold    % pruning threshold
         mergeThreshold
+        waveformBasis   % basis vector for waveforms
         D           % # dimensions
     end
     
@@ -74,6 +75,7 @@ classdef BP
             p.addOptional('pruningCtrWeight', 0.7);
             p.addOptional('pruningThreshold', 2);
             p.addOptional('mergeThreshold', 0.95);
+            p.addOptional('waveformBasis', []);
             p.parse(varargin{:});
             self.window = p.Results.window;
             self.Fs = p.Results.Fs;
@@ -101,6 +103,11 @@ classdef BP
             else
                 self.layout = Layout(layout);
             end
+            
+            % normalize waveform basis (W = BU)
+            B = p.Results.waveformBasis;
+            assert(isempty(B) || size(B, 1) == self.D, 'Waveform basis must be of dimensionality %d!', self.D)
+            self.waveformBasis = bsxfun(@rdivide, B, sqrt(sum(B .* B, 1)));
             
             % design filter for resampling
             p = self.upsamplingFactor;
@@ -198,11 +205,11 @@ classdef BP
         end
         
         
-        function W = estimateWaveforms(self, V, X)
+        function U = estimateWaveforms(self, V, X)
             % Estimate waveform templates given spike times.
-            %   W = self.estimateWaveforms(V, X) estimates the waveforms W
-            %   given the observed voltage V and the current estimate of
-            %   the spike times X.
+            %   U = self.estimateWaveforms(V, X) estimates the waveform
+            %   coefficients U given the observed voltage V and the current
+            %   estimate of the spike times X.
             
             self.log(false, 'Estimating waveforms... ')
             [T, K] = size(V);
@@ -232,62 +239,113 @@ classdef BP
                 borders(t + 1) = find(i <= t * Tdt, 1, 'last');
             end
             
-            W = zeros(D * M, K, Ndt);
-            Q = eye(D * M) * self.driftRate ^ 2;
+            B = self.waveformBasis;
+            if isempty(B)
+                E = D;
+            else
+                E = size(B, 2);
+            end
+            U = zeros(E * M, K, Ndt);
+            Q = eye(E * M) * self.driftRate ^ 2;
             
             % Pre-compute MX' * MX
-            MXprod = zeros(D * M, D * M, Ndt);
+            BMXprod = zeros(E * M, E * M, Ndt);
             for t = 1 : Ndt
                 idx = borders(t) + 1 : borders(t + 1);
                 MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
-                MXprod(:, :, t) = MXt' * MXt;
+                MXp = MXt' * MXt;
+                if ~isempty(B)
+                    for mi = 1 : M
+                        iD = (mi - 1) * D + (1 : D);
+                        iE = (mi - 1) * E + (1 : E);
+                        for mj = 1 : M
+                            jD = (mj - 1) * D + (1 : D);
+                            jE = (mj - 1) * E + (1 : E);
+                            BMXprod(iE, jE, t) = B' * MXp(iD, jD) * B;
+                        end
+                    end
+                else
+                    BMXprod(:, :, t) = MXp;
+                end
             end
             
             % Initialize
             MX1 = sparse(i(1 : borders(2)), j(1 : borders(2)), x(1 : borders(2)), Tdt, D * M);
+            MX1V = MX1' * V(1 : Tdt, :);
+            if isempty(B)
+                BMX1V = MX1V;
+            else
+                BMX1V = zeros(E * M, K);
+                for m = 1 : M
+                    iD = (m - 1) * D + (1 : D);
+                    iE = (m - 1) * E + (1 : E);
+                    BMX1V(iE, :) = B' * MX1V(iD, :);
+                end
+            end
+            
             % using pinv() instead of \ because MXprod can be rank-
             % deficient if there are no or only few spikes for some neurons
-            W(:, :, 1) = pinv(MXprod(:, :, 1)) * (MX1' * V(1 : Tdt, :));
+            U(:, :, 1) = pinv(BMXprod(:, :, 1)) * BMX1V;
             
             % Initialize state covariance
             n = full(sum(MX1, 1));
-            P = zeros(D * M, D * M, Ndt);
-            P(:, :, 1) = diag(1 ./ (n + ~n));
-            
+            P = zeros(E * M, E * M, Ndt);
+            P1 = diag(1 ./ (n + ~n));
+            if ~isempty(B)
+                for m = 1 : M
+                    iD = (m - 1) * D + (1 : D);
+                    iE = (m - 1) * E + (1 : E);
+                    P(iE, iE, 1) = B' * P1(iD, iD) * B;
+                end
+            else
+                P(:, :, 1) = P1;
+            end
+                
             % Go through all channels
             for k = 1 : K
                 
                 % Forward pass
-                Pti = zeros(D * M, D * M, Ndt);
-                I = eye(D * M);
+                Pti = zeros(E * M, E * M, Ndt);
+                I = eye(E * M);
                 for t = 2 : Ndt
                     
                     % Predict
                     Pt = P(:, :, t - 1) + Q;
                     Pti(:, :, t) = inv(Pt);
-                    Wt = W(:, k, t - 1);
+                    Ut = U(:, k, t - 1);
                     
                     % Update
                     idx = borders(t) + 1 : borders(t + 1);
                     MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
-                    MXp = MXprod(:, :, t);
-                    Kp = Pt * (I - MXp / (Pti(:, :, t) + MXp)); % Kalman gain (K = Kp * MX)
-                    KpMXp = Kp * MXp;
+                    BMXp = BMXprod(:, :, t);
+                    Kp = Pt * (I - BMXp / (Pti(:, :, t) + BMXp)); % Kalman gain (K = Kp * MX)
+                    KpBMXp = Kp * BMXp;
                     tt = (t - 1) * Tdt + (1 : Tdt);
-                    W(:, k, t) = Wt + Kp * (MXt' * V(tt, k)) - KpMXp * Wt;
-                    P(:, :, t) = (I - KpMXp) * Pt;
+                    MXtV = MXt' * V(tt, k);
+                    if isempty(B)
+                        BMXtV = MXtV;
+                    else
+                        BMXtV = zeros(E * M, 1);
+                        for m = 1 : M
+                            iD = (m - 1) * D + (1 : D);
+                            iE = (m - 1) * E + (1 : E);
+                            BMXtV(iE) = B' * MXtV(iD);
+                        end
+                    end
+                    U(:, k, t) = Ut + Kp * BMXtV - KpBMXp * Ut;
+                    P(:, :, t) = (I - KpBMXp) * Pt;
                 end
                 
                 % Backward pass
                 for t = Ndt - 1 : -1 : 1
                     Ct = P(:, :, t) * Pti(:, :, t + 1);
-                    W(:, k, t) = W(:, k, t) + Ct * (W(:, k, t + 1) - W(:, k, t));
+                    U(:, k, t) = U(:, k, t) + Ct * (U(:, k, t + 1) - U(:, k, t));
                 end
             end
             
             % Re-organize waveforms by cluster
-            W = reshape(W, [D M K Ndt]);
-            W = permute(W, [1 3 2 4]);
+            U = reshape(U, [E M K Ndt]);
+            U = permute(U, [1 3 2 4]);
             
             self.log(true)
         end
@@ -310,7 +368,7 @@ classdef BP
             F = F(1 : end - 1);
             high = find(F > self.passband(2) & F < 2 - self.passband(2));
             low = F < self.passband(1) | F > 2 - self.passband(1);
-            U = dftmtx(k);
+            Q = dftmtx(k);
             
             % temporal whitening
             for i = 1 : size(V, 2)
@@ -323,7 +381,7 @@ classdef BP
                     ci(high) = ci(high(1) - 1);
                 end
                 ci(low) = 0;
-                w = real(U * (sqrt(ci) .* U(2 * q + 1, :)') / k);
+                w = real(Q * (sqrt(ci) .* Q(2 * q + 1, :)') / k);
                 w = w(q + 1 : end - q);
 
                 % apply temporal whitening filter
@@ -338,12 +396,33 @@ classdef BP
         end
         
         
-        function V = residuals(self, V, X, W)
+        function W = waveforms(self, U)
+            % Return waveform templates given the coefficients.
+            %   W = bp.waveforms(U) returns the waveform templates W given
+            %   the coefficients U.
+            
+            B = self.waveformBasis;
+            if isempty(B)
+                W = U;
+            else
+                [~, K, M, T] = size(U);
+                W = zeros([self.D, K, M, T]);
+                for m = 1 : M
+                    for t = 1 : T
+                        W(:, :, m, t) = B * U(:, :, m, t);
+                    end
+                end
+            end
+        end
+        
+        
+        function V = residuals(self, V, X, U)
             % Compute residuals by subtracting waveform templates.
-            %   R = self.residuals(V, X, W) computes the residuals by
+            %   R = self.residuals(V, X, U) computes the residuals by
             %   subtracting the model prediction X * W from the data V.
             
             self.log(false, 'Computing residuals... ')
+            W = self.waveforms(U);
             T = size(V, 1);
             Tdt = self.dt * self.Fs;
             for i = 1 : size(X, 2)
