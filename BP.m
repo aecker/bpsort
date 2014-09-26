@@ -444,9 +444,9 @@ classdef BP
         end
         
         
-        function [X, priors] = estimateSpikes(self, V, W, priors)
+        function [X, priors] = estimateSpikes(self, V, U, priors)
             % Estimate spike times given waveform templates.
-            %   [X, priors] = self.estimateSpikes(V, W, priors) estimates
+            %   [X, priors] = self.estimateSpikes(V, U, priors) estimates
             %   the spike times given the current estimate of the waveforms
             %   using binary pursuit.
 
@@ -460,20 +460,38 @@ classdef BP
             wws = zeros(Ndt, M);
             wVs = zeros(T, M);
             p = self.upsamplingFactor;
+            B = self.waveformBasis;
+            E = size(B, 2);
             D = self.D;
             s = 1 - D : D - 1;
             dDL = zeros(2 * D - 1, M, M, p, Ndt);
+            
+            % pre-compute convolutions of all basis functions
+            if ~isempty(B)
+                convBB = zeros(E, E, 2 * D - 1, p);
+                for i = 1 : E
+                    for j = 1 : E
+                        t = conv2(conv(flipud(B(:, i)), B(:, j)), self.upsamplingFilter);
+                        convBB(i, j, :, :) = t(p + 1 : end - p, :);
+                    end
+                end
+            end
+            
             for t = 1 : Ndt
-                Wt = W(:, :, :, t);
+                Ut = U(:, :, :, t);
                 
                 % initialize \Delta L (Eq. 9) assuming X = 0 (no spikes)
                 gamma = log(1 - priors) - log(priors);
-                ww = permute(sum(sum(Wt .^ 2, 1), 2), [1 3 2]);
+                ww = permute(sum(sum(Ut .* Ut, 1), 2), [1 3 2]);
                 convVW = 0;
                 for k = 1 : K
-                    Wk = permute(Wt(:, k, :), [1 3 2]);
+                    Uk = permute(Ut(:, k, :), [1 3 2]);
                     Vk = V(max(1, (t - 1) * Tdt - self.samples(end) + 1) : min(T, t * Tdt - self.samples(1)), k);
-                    convVWk = conv2(Vk, flipud(Wk));
+                    if isempty(B)
+                        convVWk = conv2(Vk, flipud(Uk));     % O(NDM)
+                    else
+                        convVWk = conv2(Vk, flipud(B)) * Uk; % O(NDE + NEM)
+                    end
                     first = (1 + (t > 1)) * self.samples(end) + 1;
                     last = size(convVWk, 1) + (1 + (t < Ndt)) * self.samples(1);
                     convVW = convVW + convVWk(first : last, :);
@@ -490,9 +508,15 @@ classdef BP
                 % pre-compute updates to \Delta L needed when flipping X_ij
                 for i = 1 : M
                     for j = 1 : M
-                        for k = 1 : K
-                            dDLijk = conv2(conv(flipud(Wt(:, k, i)), Wt(:, k, j)), self.upsamplingFilter);
-                            dDL(:, i, j, :, t) = dDL(:, i, j, :, t) + permute(dDLijk(p + 1 : end - p, :), [1 3 4 2]);
+                        if isempty(B)
+                            for k = 1 : K
+                                dDLijk = conv2(conv(flipud(Ut(:, k, i)), Ut(:, k, j)), self.upsamplingFilter);
+                                dDL(:, i, j, :, t) = dDL(:, i, j, :, t) + permute(dDLijk(p + 1 : end - p, :), [1 3 4 2]);
+                            end
+                        else
+                            uu = Ut(:, :, i) * Ut(:, :, j)';
+                            dDLijk = sum(sum(bsxfun(@times, convBB, uu), 1), 2);
+                            dDL(:, i, j, :, t) = permute(dDLijk, [3 1 4 2]);
                         end
                     end
                 end
