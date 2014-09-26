@@ -563,7 +563,7 @@ classdef BP
                 merge = i + [0, find(XC > self.mergeThreshold)];
                 if numel(merge) > 1
                     [~, ndx] = max(priors(merge));
-                    U(:, :, i, :) = U(:, merge(ndx));
+                    U(:, :, i, :) = U(:, :, merge(ndx), :);
                     U(:, :, merge(2 : end), :) = [];
                     priors(i) = sum(priors(merge));
                     priors(merge(2 : end)) = [];
