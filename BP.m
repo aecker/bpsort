@@ -784,8 +784,8 @@ function [X, DL, A] = greedy(X, DL, A, dDL, s, offset, T, h, wws, wVs)
     %   recursively processing each chunk, thus speeding up the maximum
     %   search substantially.
     
-    Tmax = 10000;
-    if T > Tmax
+    Nmax = 100000;
+    if T * size(X, 2) > Nmax
         % divide & conquer: split at current maximum
         [X, DL, A, i] = flip(X, DL, A, dDL, s, offset, T, h, wws, wVs);
         if ~isnan(i)
