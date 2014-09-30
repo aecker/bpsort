@@ -699,6 +699,27 @@ classdef BP
         end
         
         
+        function [U, X, priors, order] = orderTemplates(self, U, X, priors, orderBy)
+            % Order waveform templates spatially.
+            %   [U, X, priors] = orderTemplates(self, U, X, priors, 'y')
+            %   orders the waveform templates spatially by th y-location of
+            %   the channel with maximum energy.
+            
+            M = numel(priors);
+            order = self.layout.channelOrder(orderBy);
+            mag = zeros(1, M);
+            peak = zeros(1, M);
+            for m = 1 : M
+                Ui = mean(U(:, order, m, :), 4);
+                [mag(m), peak(m)] = max(sum(Ui .* Ui, 1));
+            end
+            [~, order] = sort(peak * 1e6 - mag);
+            U = U(:, :, order, :);
+            X = X(:, order);
+            priors = priors(order);
+        end
+        
+        
         function y = interp(self, x, k, shape)
             % Interpolate x using subsample shifts
             %   y = self.interp(x, k) interpolates x, shifting it by k
