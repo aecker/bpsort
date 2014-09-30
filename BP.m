@@ -174,7 +174,7 @@ classdef BP
             priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
             M = 0;
-            while i < iter && ~doneSplitMerge
+            while i < iter || ~doneSplitMerge
                 
                 % estimate waveforms
                 Uw = self.estimateWaveforms(Vw, X);
