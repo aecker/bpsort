@@ -608,14 +608,21 @@ classdef BP
             prior = zeros(M, K);
             cl = cell(1, K);
             bic = zeros(M, 2);
-            for j = 1 : M
-                a = full(real(X(X(:, j) > 0, j)));
-                [mu(j, :), sigma(j), prior(j, :), cl{j}, bic(j, 2)] = mog1d(a, K, 100);
-                % BIC for single Gaussian
-                sd = var(a);
-                bic(j, 1) = sum((a - mean(a)) .^ 2 / sd + log(2 * pi * sd)) + 2 * log(numel(a));
-            end
             rate = n(n > 0)' / (T / self.Fs);
+            for j = 1 : M
+                if rate(j) > self.splitMinRate
+                    a = full(real(X(X(:, j) > 0, j)));
+                    [mu(j, :), sigma(j), prior(j, :), cl{j}, bic(j, 2)] = mog1d(a, K, 100);
+                    
+                    % BIC for single (left-truncated) Gaussian
+                    Z = @(m, s) 1 - normcdf(min(a), m, s);
+                    pdf = @(x, m, s) normpdf(x, m, s) / Z(m, s);
+                    p = mle(a, 'pdf', pdf, 'start', [mean(a) std(a)], 'lower', [0 0]);
+                    m = p(1);
+                    s = p(2);
+                    bic(j, 1) = sum((a - m) .^ 2 / s ^ 2 + log(2 * pi) + 2 * log(s) + 2 * log(Z(m, s))) + 3 * log(numel(a));
+                end
+            end
             dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
             split = find(bic(:, 1) > bic(:, 2) & ...
                          dprime > self.splitMinDPrime & ...
