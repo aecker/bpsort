@@ -1,7 +1,7 @@
 function [mu, sigma, prior, assignment, bic] = mog1d(x, K, iter)
 % One-dimensional mixture of two Gaussians with common variance.
 
-mu = linspace(min(x), max(x), K);
+mu = prctile(x, [5 95]);
 sigma = (median(abs(x - median(x))) / 0.6745) ^ 2;
 prior = ones(K, 1) / K;
 N = numel(x);
