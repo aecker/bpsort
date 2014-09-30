@@ -170,27 +170,38 @@ classdef BP
             Vw = self.whitenData(V, R);
             
             split = true;
-            merged = true;
+            doneSplitMerge = false;
             priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
-            while i < iter || split || merged
+            M = 0;
+            while i < iter && ~doneSplitMerge
                 
                 % estimate waveforms
                 Uw = self.estimateWaveforms(Vw, X);
                 
                 % merge templates that are too similar
-                [Uw, priors, merged] = self.mergeTemplates(Uw, priors);
+                if ~doneSplitMerge
+                    [Uw, priors, merged] = self.mergeTemplates(Uw, priors);
+                end
+                
+                % stop merging when number of templates decreases compared
+                % to previous iteration
+                if numel(priors) < M || (~split && ~merged)
+                    doneSplitMerge = true;
+                else
+                    M = numel(priors);
+                end
 
                 % prune waveforms and estimate spikes
                 Uw = self.pruneWaveforms(Uw);
                 [X, priors] = self.estimateSpikes(Vw, Uw, priors);
                 
                 % split templates with bimodal amplitude distribution
-                [X, priors, split] = self.splitTemplates(X, priors);
-                
-                % ensure we run a fixed number of iterations after the last
-                % splitting and/or merging operation
-                i = (~split & ~merged) * (i + 1);
+                if ~doneSplitMerge
+                    [X, priors, split] = self.splitTemplates(X, priors);
+                else
+                    i = i + 1;
+                end
                 
                 self.log('\n')
             end
@@ -201,7 +212,7 @@ classdef BP
             zero = max(sum(abs(Uw), 1), [], 4) < 1e-6;
             U = bsxfun(@times, U, zero);
             
-            self.log('Done fitting model [%ds]\n\n', (now - t) * 24 * 60 * 60)
+            self.log('Done fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
         
         
