@@ -1,18 +1,18 @@
-function plotTracesWithSingleUnits(V, X, W, bp, layout, sua, start, N, spacing)
+function plotTracesWithSingleUnits(V, X, U, bp, sua, start, N, spacing)
 % Plot raw traces with single unit spikes overlaid.
 
 if nargin < 9
     spacing = 15;
 end
-y(layout.channels) = layout.y;
-[~, order] = sort(y);
+order = bp.layout.channelOrder('y');
+W = bp.waveforms(U);
 Nsua = numel(sua) - 1;
 K = size(V, 2);
 Tt = bp.dt * bp.Fs;
 ndx = start + (1 : N);
 V = V(ndx, order);
 W = W(:, order, :, :);
-R = bp.residuals(V, X(ndx, :), W);
+R = bp.residuals(V, X(ndx, :), U);
 sd = std(R);
 V = bsxfun(@rdivide, V, sd);
 W = bsxfun(@rdivide, W, sd);
