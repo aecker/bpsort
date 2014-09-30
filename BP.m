@@ -212,6 +212,9 @@ classdef BP
             nnz = max(sum(abs(Uw), 1), [], 4) > 1e-6;
             U = bsxfun(@times, U, nnz);
             
+            % Order templates spatially
+            [U, X] = self.orderTemplates(U, X, priors, 'yx');
+            
             self.log('Done fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
         
