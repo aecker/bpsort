@@ -664,9 +664,9 @@ classdef BP
             % smooth with adjacent channels
             nrm = zeros(K, M);
             N = 0;
-            h = zeros(1, K);
             for k = 1 : K
                 neighbors = self.layout.neighbors(k, self.pruningRadius);
+                h = zeros(1, K);
                 h(neighbors) = (1 - self.pruningCtrWeight) / numel(neighbors);
                 h(k) = self.pruningCtrWeight;
                 nrm(k, :) = sqrt(max(sum(sum(bsxfun(@times, h, U), 2) .^ 2, 1), [], 4));
