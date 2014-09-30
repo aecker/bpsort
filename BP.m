@@ -209,8 +209,8 @@ classdef BP
             % Re-estimate non-whitened waveforms and apply the same pruning
             % as to whitened waveforms
             U = self.estimateWaveforms(V, X);
-            zero = max(sum(abs(Uw), 1), [], 4) < 1e-6;
-            U = bsxfun(@times, U, zero);
+            nnz = max(sum(abs(Uw), 1), [], 4) > 1e-6;
+            U = bsxfun(@times, U, nnz);
             
             self.log('Done fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
