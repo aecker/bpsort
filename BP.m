@@ -619,11 +619,9 @@ classdef BP
                     
                     % BIC for single (left-truncated) Gaussian
                     Z = @(m, s) 1 - normcdf(min(a), m, s);
-                    pdf = @(x, m, s) normpdf(x, m, s) / Z(m, s);
-                    p = mle(a, 'pdf', pdf, 'start', [mean(a) std(a)], 'lower', [0 0]);
-                    m = p(1);
-                    s = p(2);
-                    bic(j, 1) = sum((a - m) .^ 2 / s ^ 2 + log(2 * pi) + 2 * log(s) + 2 * log(Z(m, s))) + 3 * log(numel(a));
+                    logpdf = @(x, m, s) -0.5 * ((x - m) .^ 2 / s ^ 2 + log(2 * pi)) - log(s) - log(Z(m, s));
+                    p = mle(a, 'logpdf', logpdf, 'start', [mean(a) std(a)], 'lower', [0 0]);
+                    bic(j, 1) = -2 * sum(logpdf(a, p(1), p(2))) + 3 * log(numel(a));
                 end
             end
             dprime = abs(diff(mu, [], 2)) ./ sqrt(sigma);
