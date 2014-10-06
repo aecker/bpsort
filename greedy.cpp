@@ -112,11 +112,11 @@ int flip(mxArray *X, const mxArray *DL, const mxArray *A, const mxArray *dDL,
 //                 mexPrintf("Old size = %d\n", mxGetNzmax(X));
                 mxSetNzmax(X, nzmax);
 //                 mexPrintf("New size = %d\n", mxGetNzmax(X));
-                Xir = mxRealloc(Xir, nzmax * sizeof(*Xir));
+                Xir = (mwIndex*) mxRealloc(Xir, nzmax * sizeof(*Xir));
                 mxSetIr(X, Xir);
-                Xpr = mxRealloc(Xpr, nzmax * sizeof(*Xpr));
+                Xpr = (double*) mxRealloc(Xpr, nzmax * sizeof(*Xpr));
                 mxSetPr(X, Xpr);
-                Xpi = mxRealloc(Xpi, nzmax * sizeof(*Xpi));
+                Xpi = (double*) mxRealloc(Xpi, nzmax * sizeof(*Xpi));
                 mxSetPi(X, Xpi);
             }
 //             mexPrintf("After growing:\n");
