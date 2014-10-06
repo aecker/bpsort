@@ -503,18 +503,27 @@ classdef BP
                 gamma = log(1 - priors) - log(priors);
                 ww = permute(sum(sum(Ut .* Ut, 1), 2), [1 3 2]);
                 convVW = 0;
-                for k = 1 : K
-                    Uk = permute(Ut(:, k, :), [1 3 2]);
-                    Vk = V(max(1, (t - 1) * Tdt - self.samples(end) + 1) : min(T, t * Tdt - self.samples(1)), k);
-                    if isempty(B)
-                        convVWk = conv2(Vk, flipud(Uk));     % O(NDM)
-                    else
-                        convVWk = conv2(Vk, flipud(B)) * Uk; % O(NDE + NEM)
+                if isempty(B)
+                    for k = 1 : K
+                        Uk = permute(Ut(:, k, :), [1 3 2]);
+                        Vk = V(max(1, (t - 1) * Tdt - self.samples(end) + 1) : min(T, t * Tdt - self.samples(1)), k);
+                        convVWk = conv2(Vk, flipud(Uk)); % O(KNDM)
+                        first = (1 + (t > 1)) * self.samples(end) + 1;
+                        last = size(convVWk, 1) + (1 + (t < Ndt)) * self.samples(1);
+                        convVW = convVW + convVWk(first : last, :); % O(KNM)
                     end
-                    first = (1 + (t > 1)) * self.samples(end) + 1;
-                    last = size(convVWk, 1) + (1 + (t < Ndt)) * self.samples(1);
-                    convVW = convVW + convVWk(first : last, :);
+                else
+                    % for large M and K > E loop over e is faster than over k
+                    Vt = V(max(1, (t - 1) * Tdt - self.samples(end) + 1) : min(T, t * Tdt - self.samples(1)), :);
+                    for e = 1 : E
+                        Ue = permute(Ut(e, :, :), [2 3 1]);
+                        convVeB = conv2(Vt, flipud(B(:, e))); % O(KNED)
+                        first = (1 + (t > 1)) * self.samples(end) + 1;
+                        last = size(convVeB, 1) + (1 + (t < Ndt)) * self.samples(1);
+                        convVW = convVW + convVeB(first : last, :) * Ue; % O(KNEM)
+                    end
                 end
+                
                 sa = 1 / self.sigmaAmpl ^ 2;
                 At = bsxfun(@rdivide, convVW + sa, ww + sa);
                 DLt = bsxfun(@minus, (At / 2) .* (convVW + sa), gamma + sa / 2);
