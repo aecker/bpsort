@@ -161,7 +161,7 @@ int flip(mxArray *X, const mxArray *DL, const mxArray *A, const mxArray *dDL,
             for (; l != Xjc[M]; ++l) {
                 Xir[l] = Xir[l + 1];
                 Xpr[l] = Xpr[l + 1];
-                Xir[l] = Xir[l + 1];
+                Xpi[l] = Xpi[l + 1];
             }
 //         mexPrintf("AFTER:\n");
 //         printSparse(X);
