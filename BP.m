@@ -314,6 +314,13 @@ classdef BP
             else
                 P(:, :, 1) = P1;
             end
+            
+            % construct (sparse) spike matrices for each time step
+            MXt = cell(1, Ndt);
+            for t = 2 : Ndt
+                idx = borders(t) + 1 : borders(t + 1);
+                MXt{t} = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
+            end
                 
             % Go through all channels
             for k = 1 : K
@@ -329,13 +336,11 @@ classdef BP
                     Ut = U(:, k, t - 1);
                     
                     % Update
-                    idx = borders(t) + 1 : borders(t + 1);
-                    MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
                     BMXp = BMXprod(:, :, t);
                     Kp = Pt * (I - BMXp / (Pti(:, :, t) + BMXp)); % Kalman gain (K = Kp * MX)
                     KpBMXp = Kp * BMXp;
                     tt = (t - 1) * Tdt + (1 : Tdt);
-                    MXtV = MXt' * V(tt, k);
+                    MXtV = MXt{t}' * V(tt, k);
                     if isempty(B)
                         BMXtV = MXtV;
                     else
