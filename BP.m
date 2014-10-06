@@ -618,9 +618,9 @@ classdef BP
                     [mu(j, :), sigma(j), prior(j, :), cl{j}, bic(j, 2)] = mog1d(a, K, 100);
                     
                     % BIC for single (left-truncated) Gaussian
-                    Z = @(m, s) 1 - normcdf(min(a), m, s);
+                    Z = @(m, s) max(normcdf(-2), 1 - normcdf(min(a), m, s));
                     logpdf = @(x, m, s) -0.5 * ((x - m) .^ 2 / s ^ 2 + log(2 * pi)) - log(s) - log(Z(m, s));
-                    p = mle(a, 'logpdf', logpdf, 'start', [mean(a) std(a)], 'lower', [0 0]);
+                    p = mle(a, 'logpdf', logpdf, 'start', [mean(a) std(a)]);
                     bic(j, 1) = -2 * sum(logpdf(a, p(1), p(2))) + 3 * log(numel(a));
                 end
             end
