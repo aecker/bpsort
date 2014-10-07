@@ -9,30 +9,32 @@
 
 classdef BP
     properties %#ok<*PROP>
-        layout      % geometrical layout of the electrode (see Layout class)
-        window      % window for extracting waveform: [a b] ms
-        samples     % samples corresponding to waveform window
-        Fs          % sampling rate
-        verbose     % verbose output during fitting?
-        logging     % log progress into file?
-        logFile
-        tempFiltLen % length of temporal whitening filter (ms)
-        upsamplingFactor  % upsampling factor for spike times
-        upsamplingFilter        % filter used for subsampling
+        layout              % geometrical layout of the electrode (see Layout class)
+        samples             % samples corresponding to waveform window
+        Fs                  % sampling rate
+        verbose             % verbose output during fitting?
+        logging             % log progress into file?
+        logFile             % name of log file (default: yyyymmdd_HHMMSS.log)
+        tempFiltLen         % length of temporal whitening filter (ms)
+        upsamplingFactor    % upsampling factor for spike times
+        upsamplingFilter    % filter used for subsampling
         upsamplingFilterOrder   % filter order (for subsampling filter)
-        passband    % passband of continuous input signal
-        dt          % time window for tracking waveform drift (sec)
-        driftRate   % waveform drift rate (muV, SD per time step)
-        sigmaAmpl   % SD of waveform amplitudes (muV)
-        splitMinDPrime  % Min d' on aomplitudes for splitting a cluster
-        splitMinPrior   % Min prior prob ob second component for splitting
-        splitMinRate    % Min firing rate for splitting
+        passband            % passband of continuous input signal
+        dt                  % time window for tracking waveform drift (sec)
+        driftRate           % waveform drift rate (muV, SD per time step)
+        sigmaAmpl           % SD of waveform amplitudes (muV)
+        splitMinDPrime      % Min d' on aomplitudes for splitting a cluster
+        splitMinPrior       % Min prior prob ob second component for splitting
+        splitMinRate        % Min firing rate for splitting
         pruningRadius       % radius for smoothing before pruning
         pruningCtrWeight    % center weight of smoothing filter
         pruningThreshold    % pruning threshold
-        mergeThreshold
-        waveformBasis   % basis vector for waveforms
-        D           % # dimensions
+        mergeThreshold      % merging threshold (maximal cross-correlation)
+        waveformBasis       % basis vector for waveforms
+
+        K                   % # channels
+        D                   % # samples/waveform/channel
+        E                   % # basis functions for waveforms/channel
     end
     
     methods
@@ -58,7 +60,7 @@ classdef BP
             % parse optional parameters
             p = inputParser;
             p.KeepUnmatched = true;
-            p.addOptional('window', [-1 2]);
+            p.addOptional('samples', -11 : 24);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
             p.addOptional('logging', false);
@@ -77,9 +79,8 @@ classdef BP
             p.addOptional('mergeThreshold', 0.95);
             p.addOptional('waveformBasis', []);
             p.parse(varargin{:});
-            self.window = p.Results.window;
+            self.samples = p.Results.samples;
             self.Fs = p.Results.Fs;
-            self.samples = round(self.window(1) * self.Fs / 1000) : round(self.window(2) * self.Fs / 1000);
             self.D = numel(self.samples);
             self.verbose = p.Results.verbose;
             self.logging = p.Results.logging;
@@ -103,11 +104,13 @@ classdef BP
             else
                 self.layout = Layout(layout);
             end
+            self.K = self.layout.n;
             
             % normalize waveform basis (W = BU)
             B = p.Results.waveformBasis;
             assert(isempty(B) || size(B, 1) == self.D, 'Waveform basis must be of dimensionality %d!', self.D)
             self.waveformBasis = bsxfun(@rdivide, B, sqrt(sum(B .* B, 1)));
+            self.E = size(B, 2);
             
             % design filter for resampling
             p = self.upsamplingFactor;
