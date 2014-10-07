@@ -59,7 +59,6 @@ classdef BP
             
             % parse optional parameters
             p = inputParser;
-            p.KeepUnmatched = true;
             p.addOptional('samples', -11 : 24);
             p.addOptional('Fs', 12000);
             p.addOptional('verbose', false);
