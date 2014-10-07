@@ -742,19 +742,6 @@ classdef BP
         end
         
         
-        function y = interp(self, x, k, shape)
-            % Interpolate x using subsample shifts
-            %   y = self.interp(x, k) interpolates x, shifting it by k
-            %   subsamples (i.e. k / self.subsampling samples).
-            
-            if nargin < 4
-                shape = 'same';
-            end
-            p = self.upsamplingFactor;
-            h = self.upsamplingFilter(:, ceil(p / 2) + k);
-            y = convn(x, h, shape);
-        end
-        
     end
     
     
