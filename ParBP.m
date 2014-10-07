@@ -5,8 +5,12 @@
 
 classdef ParBP < BP
     properties %#ok<*PROP>
-        chunkSize   % chunk size (# blocks of length dt sec [see below])
-        tempDir     % temporary directory containing files for communication with workers
+        blocksPerChunk  % chunk size (# blocks of length dt sec [see below])
+        tempDir         % temporary directory containing files for communication with workers
+    end
+    
+    properties (SetAccess = private)
+        samplesPerChunk % number of samples per chunk
     end
     
     properties (Constant)
@@ -30,13 +34,14 @@ classdef ParBP < BP
             % parse optional parameters
             p = inputParser;
             p.KeepUnmatched = true;
-            p.addOptional('chunkSize', 10);
+            p.addOptional('blocksPerChunk', 10);
             p.addOptional('tempDir', tempdir());
             p.parse(varargin{:});
             args = [fieldnames(p.Unmatched), struct2cell(p.Unmatched)]';
             self = self@BP(layout, args{:});
-            self.chunkSize = p.Results.chunkSize;
+            self.blocksPerChunk = p.Results.blocksPerChunk;
             self.tempDir = p.Results.tempDir;
+            self.samplesPerChunk = self.dt * self.Fs * self.blocksPerChunk;
         end
         
     end
