@@ -263,23 +263,13 @@ classdef BP
             Q = eye(E * M) * self.driftRate ^ 2;
             
             % Pre-compute MX' * MX
-            BMXprod = zeros(E * M, E * M, Ndt);
-            for t = 1 : Ndt
-                idx = borders(t) + 1 : borders(t + 1);
-                MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
-                MXp = MXt' * MXt;
-                if ~isempty(B)
-                    for mi = 1 : M
-                        iD = (mi - 1) * D + (1 : D);
-                        iE = (mi - 1) * E + (1 : E);
-                        for mj = 1 : M
-                            jD = (mj - 1) * D + (1 : D);
-                            jE = (mj - 1) * E + (1 : E);
-                            BMXprod(iE, jE, t) = B' * MXp(iD, jD) * B;
-                        end
-                    end
-                else
-                    BMXprod(:, :, t) = MXp;
+            if K > 1
+                MX = cell(1, Ndt);
+                BMXprod = zeros(E * M, E * M, Ndt);
+                for t = 2 : Ndt
+                    idx = borders(t) + 1 : borders(t + 1);
+                    MX{t} = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
+                    BMXprod(:, :, t) = getBMXprod(MX{t}, B);
                 end
             end
             
@@ -299,7 +289,7 @@ classdef BP
             
             % using pinv() instead of \ because MXprod can be rank-
             % deficient if there are no or only few spikes for some neurons
-            U(:, :, 1) = pinv(BMXprod(:, :, 1)) * BMX1V;
+            U(:, :, 1) = pinv(getBMXprod(MX1, B)) * BMX1V;
             
             % Initialize state covariance
             n = full(sum(MX1, 1));
@@ -315,13 +305,6 @@ classdef BP
                 P(:, :, 1) = P1;
             end
             
-            % construct (sparse) spike matrices for each time step
-            MXt = cell(1, Ndt);
-            for t = 2 : Ndt
-                idx = borders(t) + 1 : borders(t + 1);
-                MXt{t} = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
-            end
-                
             % Go through all channels
             for k = 1 : K
                 
@@ -336,11 +319,18 @@ classdef BP
                     Ut = U(:, k, t - 1);
                     
                     % Update
-                    BMXp = BMXprod(:, :, t);
+                    if K > 1
+                        MXt = MX{t};
+                        BMXp = BMXprod(:, :, t);
+                    else
+                        idx = borders(t) + 1 : borders(t + 1);
+                        MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
+                        BMXp = getBMXprod(MXt, B);
+                    end
                     Kp = Pt * (I - BMXp / (Pti(:, :, t) + BMXp)); % Kalman gain (K = Kp * MX)
                     KpBMXp = Kp * BMXp;
                     tt = (t - 1) * Tdt + (1 : Tdt);
-                    MXtV = MXt{t}' * V(tt, k);
+                    MXtV = MXt' * V(tt, k);
                     if isempty(B)
                         BMXtV = MXtV;
                     else
@@ -775,5 +765,28 @@ classdef BP
             end
         end
         
+    end
+end
+
+
+function BMXprod = getBMXprod(MX, B)
+% Compute B' * MX' * MX * B efficiently.
+
+    MXp = MX' * MX;
+    if ~isempty(B)
+        [D, E] = size(B);
+        M = size(MX, 2) / D;
+        BMXprod = zeros(E * M);
+        for mi = 1 : M
+            iD = (mi - 1) * D + (1 : D);
+            iE = (mi - 1) * E + (1 : E);
+            for mj = 1 : M
+                jD = (mj - 1) * D + (1 : D);
+                jE = (mj - 1) * E + (1 : E);
+                BMXprod(iE, jE) = B' * MXp(iD, jD) * B;
+            end
+        end
+    else
+        BMXprod = MXp;
     end
 end
