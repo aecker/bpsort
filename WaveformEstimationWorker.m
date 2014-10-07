@@ -46,28 +46,37 @@ classdef WaveformEstimationWorker
                 bp = self.bp;
                 
                 % wait for spike times to be ready or termination signal
-                fprintf('Waiting for spike times or termination signal...\n')
+                fprintf('  Waiting for spike times or termination signal...\n')
                 spikeFileBase = fullfile(bp.tempDir, sprintf(bp.spikeFile, self.iter - 1));
                 while ~exist([spikeFileBase '.done'], 'file') && ~done
                     done = exist(fullfile(bp.tempDir, bp.completionFile), 'file');
                     pause(0.1)
                 end
                 
-                if ~done
+                if done
+                    fprintf('\nAlgorithm terminated\n\n')
+                else
+                    
                     % load spike times from file
+                    fprintf('  Loading spike times... '); tic
                     spikeFiles = dir([spikeFileBase '.*.mat']);
                     spikeFiles = {spikeFiles.name};
                     X = loadSpikes(spikeFiles);
+                    fprintf('%.1 sec\n', toc)
                     
                     % estimate waveforms
+                    fprintf('  Estimating waveforms... '); tic
                     U = bp.estimateWaveforms(self.V, X);
+                    fprintf('%.1 sec\n', toc)
                     
                     % write waveforms to file
+                    fprintf('  Writing waveforms to disc... '); tic
                     self.iter = self.iter + 1;
                     waveformFileTmp = fullfile(bp.tempDir, sprintf([bp.waveformFile '.%d.saving'], self.iter, self.channel));
                     waveformFile = fullfile(bp.tempDir, sprintf([bp.waveformFile '.%d.mat'], self.iter, self.channel));
                     fastsave(waveformFileTmp, U)
                     movefile(waveformFileTmp, waveformFile);
+                    fprintf('%.1 sec\n', toc)
                 end
             end
         end
