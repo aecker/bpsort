@@ -88,8 +88,8 @@ classdef BPSorter < handle
             self.matfile = matfile(dataFile, 'writable', true);
             
             % read data, resample, and store to temp file
-            Fs = getSamplingRate(self.baseReader);
-            fr = filteredReader(self.baseReader, filterFactory.createHighpass(self.HighPass(1), self.HighPass(2), Fs));
+            Fs = getSamplingRate(br);
+            fr = filteredReader(br, filterFactory.createHighpass(self.HighPass(1), self.HighPass(2), Fs));
             blockSize = round(self.BlockSize * Fs);
             pr = packetReader(fr, 1, 'stride', blockSize);
             [p, q] = rat(self.Fs / Fs);
@@ -103,7 +103,7 @@ classdef BPSorter < handle
                 if ~rem(i, 10)
                     fprintf('%d ', i)
                 end
-                V = toMuV(self.baseReader, resample(pr(i), p, q));
+                V = toMuV(br, resample(pr(i), p, q));
                 start = (i - 1) * newBlockSize;
                 self.matfile.V(start + (1 : newBlockSize), :) = V;
             end
