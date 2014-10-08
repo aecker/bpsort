@@ -50,6 +50,51 @@ classdef ParBP < BP
         end
         
         
+        function [X, U] = fit(self, chunks, iter)
+            % Fit model.
+            
+            % initialization and whitening
+            % TODO
+            
+            if nargin < 2
+                iter = 3;
+            end
+            for i = 1 : iter
+                
+                % wait until waveforms are ready
+                done = false;
+                while ~done
+                    pause(1)
+                    waveformFileBase = fullfile(self.tempDir, sprintf(self.waveformFile, iter));
+                    if numel(dir([waveformFileBase '.*.mat'])) == self.K
+                        done = true;
+                        fclose(fopen([waveformFileBase '.done'], 'w'));
+                    end
+                end
+                
+                % delete old temp files containing spike times
+                delete(fullfile(self.tempDir, sprintf([self.spikeFile '.*'], iter - 1)));
+                                
+                % wait until spike times are ready
+                done = false;
+                while ~done
+                    pause(1)
+                    spikeFileBase = fullfile(self.tempDir, sprintf(self.spikeFile, iter));
+                    if numel(dir([spikeFileBase '.*.mat'])) == chunks
+                        done = true;
+                        fclose(fopen([spikeFileBase '.done'], 'w'));
+                    end
+                end
+                
+                % delete old temp files containing waveforms and priors
+                delete(fullfile(self.tempDir, sprintf([self.priorFile '.*'], iter - 1)));
+                delete(fullfile(self.tempDir, sprintf([self.waveformFile '.*'], iter)));
+                
+            end
+            
+        end
+        
+        
         function delete(self)
             % Class destructor
             
