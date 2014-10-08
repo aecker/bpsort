@@ -7,7 +7,7 @@
 %
 % AE 2014-08-07
 
-classdef BP
+classdef BP < handle
     properties %#ok<*PROP>
         layout              % geometrical layout of the electrode (see Layout class)
         samples             % samples corresponding to waveform window

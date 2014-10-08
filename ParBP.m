@@ -35,13 +35,27 @@ classdef ParBP < BP
             p = inputParser;
             p.KeepUnmatched = true;
             p.addOptional('blocksPerChunk', 10);
-            p.addOptional('tempDir', tempdir());
+            p.addOptional('tempDir', fullfile(tempdir(), datestr(now(), 'BP_yyyymmdd_HHMMSS')));
             p.parse(varargin{:});
             args = [fieldnames(p.Unmatched), struct2cell(p.Unmatched)]';
             self = self@BP(layout, args{:});
             self.blocksPerChunk = p.Results.blocksPerChunk;
             self.tempDir = p.Results.tempDir;
+            if ~exist(self.tempDir, 'file')
+                mkdir(self.tempDir)
+            else
+                delete([self.tempDir '/*'])
+            end
             self.samplesPerChunk = self.dt * self.Fs * self.blocksPerChunk;
+        end
+        
+        
+        function delete(self)
+            % Class destructor
+            
+            % remove temp directory
+            delete(fullfile(self.tempDir, '*'))
+            rmdir(self.tempDir)
         end
         
     end
