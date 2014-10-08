@@ -11,15 +11,17 @@ classdef BPSorter < handle
     
     
     properties (SetAccess = private)
-        baseReader
+        layout
         matfile
         Fs
+        N
+        K
     end
     
     
     methods
         
-        function self = BPSorter(br, varargin)
+        function self = BPSorter(layout, varargin)
             % Constructor for BPSorter class
             
             p = inputParser;
@@ -34,12 +36,20 @@ classdef BPSorter < handle
             for i = 1 : numel(par)
                 self.(par{i}) = p.Results.(par{i});
             end
-            self.baseReader = br;
+            
+            if isa(layout, 'Layout')
+                self.layout = layout;
+            else
+                self.layout = Layout(layout);
+            end
+            self.K = self.layout.n;
+            
             if ~exist(self.TempDir, 'file')
                 mkdir(self.TempDir)
             else
                 delete([self.TempDir '/*'])
             end
+            
             self.Fs = 2 * self.NyquistFreq;
         end
         
@@ -53,8 +63,12 @@ classdef BPSorter < handle
         end
         
         
-        function writeTempFile(self)
-            % Write temporary (downsampled) Matlab file containing raw data
+        function readData(self, br)
+            % Read raw data, downsample and store in local temp file
+            
+            assert(self.K == getNbChannels(br), ...
+                'Dataset and channel layout are incompatible: %d vs. %d channels!', ...
+                getNbChannels(br), self.K)
             
             % create memory-mapped Matlab file
             dataFile = fullfile(self.TempDir, 'data.mat');
@@ -70,9 +84,8 @@ classdef BPSorter < handle
             nBlocks = length(pr);
             lastBlockSize = ceil((length(fr) - (nBlocks - 1) * blockSize) * p / q);
             newBlockSize = ceil(blockSize * p / q);
-            N = (nBlocks - 1) * newBlockSize + lastBlockSize;
-            K = getNbChannels(self.baseReader);
-            h5create(dataFile, '/V', [N K], 'ChunkSize', [newBlockSize K]);
+            self.N = (nBlocks - 1) * newBlockSize + lastBlockSize;
+            h5create(dataFile, '/V', [self.N self.K], 'ChunkSize', [newBlockSize self.K]);
             fprintf('Creating temporary file containing resampled data [%d blocks]\n%s\n', nBlocks, dataFile)
             for i = 1 : nBlocks
                 if ~rem(i, 10)
