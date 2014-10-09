@@ -28,7 +28,7 @@ while s + T * 60 * Fs < length(fr)
     V = resample(V, p, q);
     Fs = p / q * Fs;
     
-    V = V(:, flipud(config.channels));
+    V = V(:, layout.channelOrder('y'));
 
     K = size(V, 2);
     plot(bsxfun(@plus, V, (1 : K) * spacing), 'k')
