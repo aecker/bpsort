@@ -108,6 +108,10 @@ classdef BPSorter < handle
                 save(dataFile, '-v7.3', 'nBlocksWritten');
             else
                 nBlocksWritten = self.matfile.nBlocksWritten;
+                if isinf(nBlocksWritten) % file is already complete
+                    fprintf('Using existing temp file: %s\n', dataFile)
+                    return
+                end
             end
             
             % read data, resample, and store to temp file
@@ -120,8 +124,10 @@ classdef BPSorter < handle
             lastBlockSize = ceil((length(fr) - (nBlocks - 1) * blockSize) * p / q);
             newBlockSize = ceil(blockSize * p / q);
             self.N = (nBlocks - 1) * newBlockSize + lastBlockSize;
-            h5create(dataFile, '/V', [self.N self.K], 'ChunkSize', [newBlockSize self.K]);
-            fprintf('Creating temporary file containing resampled data [%d blocks]\n%s\n', nBlocks, dataFile)
+            if ~nBlocksWritten
+                h5create(dataFile, '/V', [self.N self.K], 'ChunkSize', [newBlockSize self.K]);
+            end
+            fprintf('Writing temporary file containing resampled data [%d blocks]\n%s\n', nBlocks, dataFile)
             for i = nBlocksWritten + 1 : nBlocks
                 if ~rem(i, 10)
                     fprintf('%d ', i)
@@ -131,6 +137,7 @@ classdef BPSorter < handle
                 self.matfile.V(start + (1 : size(V, 1)), :) = V;
                 self.matfile.nBlocksWritten = i;
             end
+            self.matfile.nBlocksWritten = inf;
             fprintf('done\n')
         end
         
@@ -146,8 +153,12 @@ classdef BPSorter < handle
                 blockSize = self.BlockSize * self.Fs;
                 nBlocks = fix(self.N / blockSize);
                 subBlockSize = round(blockSize / nskip);
-                idx = bsxfun(@plus, blockSize * (0 : nBlocks - 1), (1 : subBlockSize)');
-                V = self.matfile.V(idx(:), :);
+                V = zeros(nBlocks * subBlockSize, size(self.matfile, 'V', 2));
+                for i = 1 : nBlocks
+                    idxFile = blockSize * (i - 1) + (1 : subBlockSize);
+                    idxV = subBlockSize * (i - 1) + (1 : subBlockSize);
+                    V(idxV, :) = self.matfile.V(idxFile, :);
+                end
             end
             
             % Create channel groups
@@ -179,6 +190,22 @@ classdef BPSorter < handle
             % remove duplicate clusters that were created above because the
             % channel groups overlap
             X = self.removeDuplicateClusters(models, self.N);
+        end
+        
+        
+        function N = get.N(self)
+            if isempty(self.N)
+                self.N = size(self.matfile, 'V', 1);
+            end
+            N = self.N;
+        end
+        
+        
+        function m = get.matfile(self)
+            if isempty(self.matfile)
+                error('Temporary data file not initialized. Run self.readData() first!')
+            end
+            m = self.matfile;
         end
         
     end
