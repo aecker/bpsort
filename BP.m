@@ -123,9 +123,8 @@ classdef BP
             
             % determine file name for log file
             if self.logging
-                p = mfilename('fullpath');
-                ndx = find(p == filesep, 1, 'last');
-                self.logFile = [p(1 : ndx), 'logs', filesep, datestr(now, 'yyyymmdd_HHMMSS'), '.log'];
+                p = fileparts(mfilename('fullpath'));
+                self.logFile = fullfile(p, 'logs', [datestr(now, 'yyyymmdd_HHMMSS') '.log']);
             end
         end
         
