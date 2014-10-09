@@ -54,7 +54,7 @@ classdef BPSorter < BP
             p.addOptional('InitSortDf', 5);
             p.addOptional('InitSortClusterCost', 0.002);
             p.addOptional('InitSortDriftRate', 400 / 3600 / 1000);
-            p.addOptional('InitSortTolerance', 0.0005);
+            p.addOptional('InitSortTolerance', 0.005);
             p.addOptional('InitSortCovRidge', 1.5);
             p.parse(varargin{:});
             
@@ -82,6 +82,82 @@ classdef BPSorter < BP
                 delete(fullfile(self.TempDir, '*'))
                 rmdir(self.TempDir)
             end
+        end
+        
+        
+        function [X, U] = fit(self)
+            % Fit model.
+            
+            % initialize on subset of the data using traditional spike
+            % detection + sorting algorithm
+            self.log(false, 'Initializing model using Mixture of Kalman filter model...\n')
+            [V, X0] = self.initialize();
+            
+            % fit BP model on subset of the data
+            self.log('Starting to fit BP model on subset of the data\n\n')
+            
+            % adjust dt and driftRate to account for the fact that we're
+            % using only subsets of each block
+            nBlocks = fix(self.N / (self.BlockSize * self.Fs));
+            fraction = (size(V, 1) / nBlocks / self.Fs) / self.BlockSize;
+            self.dt = self.BlockSize * fraction;
+            self.driftRate = self.driftRate / fraction;
+            
+            % whiten data
+            U = self.estimateWaveforms(V, X0);
+            V = self.whitenData(V, self.residuals(V, X0, U));
+            
+            split = true;
+            doneSplitMerge = false;
+            priors = sum(X0 > 0, 1) / size(X0, 1);
+            i = 0;
+            iter = 1;
+            M = 0;
+            while i <= iter || ~doneSplitMerge
+                
+                % estimate waveforms
+                Uw = self.estimateWaveforms(V, X);
+                
+                % merge templates that are too similar
+                if ~doneSplitMerge
+                    [Uw, priors, merged] = self.mergeTemplates(Uw, priors);
+                end
+                
+                % stop merging when number of templates does not increase
+                % compared to previous iteration
+                if numel(priors) <= M || (~split && ~merged)
+                    doneSplitMerge = true;
+                else
+                    M = numel(priors);
+                end
+                
+                % prune waveforms and estimate spikes
+                Uw = self.pruneWaveforms(Uw);
+                [X, priors] = self.estimateSpikes(V, Uw, priors);
+                
+                % split templates with bimodal amplitude distribution
+                if ~doneSplitMerge
+                    [X, priors, split] = self.splitTemplates(X, priors);
+                else
+                    i = i + 1;
+                end
+                
+                self.log('\n')
+            end
+            
+            % Order templates spatially
+            Uw = self.orderTemplates(Uw, X, priors, 'yx');
+            
+            % final run in chunks over entire dataset
+            self.dt = self.BlockSize;
+            self.driftRate = self.driftRate * fraction;
+            [X, U] = self.bp.estimateByBlock(Uw, priors);
+            
+            % apply the same pruning as to whitened waveforms
+            nnz = max(sum(abs(Uw), 1), [], 4) > 1e-6;
+            U = bsxfun(@times, U, nnz);
+            
+            self.log('\n--\nDone fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
         
         
@@ -134,7 +210,7 @@ classdef BPSorter < BP
         end
         
         
-        function X = initialize(self)
+        function [V, X] = initialize(self)
             % Initialize model
             
             % load subset of the data

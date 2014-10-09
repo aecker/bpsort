@@ -738,7 +738,7 @@ classdef BP < handle
     
     
     
-    methods (Access = private)
+    methods (Access = protected)
         
         function log(self, varargin)
             
