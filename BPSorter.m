@@ -6,7 +6,7 @@ classdef BPSorter < handle
         BlockSize           % size of blocks with constant waveform (sec)
         MaxSamples          % max number of samples to use
         HighPass            % highpass cutoff [stop, pass] (Hz)
-        NyquistFreq         % Nyquist frequency (Hz)
+        Fs                  % target sampling rate (Hz, data will be resampled)
         
         % properties used for initialization only
         InitChannelOrder    % channel ordering (x|y|xy|yx)
@@ -29,7 +29,6 @@ classdef BPSorter < handle
     properties (SetAccess = private)
         layout
         matfile
-        Fs
         N
         K
     end
@@ -46,7 +45,7 @@ classdef BPSorter < handle
             p.addOptional('BlockSize', 60);
             p.addOptional('MaxSamples', 2e7);
             p.addOptional('HighPass', [400 600]);
-            p.addOptional('NyquistFreq', 6000);
+            p.addOptional('Fs', 6000);
             p.addOptional('InitChannelOrder', 'y');
             p.addOptional('InitNumChannels', 5);
             p.addOptional('InitDetectThresh', 5);
@@ -77,8 +76,6 @@ classdef BPSorter < handle
             elseif ~self.Debug
                 delete([self.TempDir '/*'])
             end
-            
-            self.Fs = 2 * self.NyquistFreq;
         end
         
         
