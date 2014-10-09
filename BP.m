@@ -31,7 +31,10 @@ classdef BP
         pruningThreshold    % pruning threshold
         mergeThreshold      % merging threshold (maximal cross-correlation)
         waveformBasis       % basis vector for waveforms
-
+    end
+    
+    
+    properties (SetAccess = private)
         K                   % # channels
         D                   % # samples/waveform/channel
         E                   % # basis functions for waveforms/channel
