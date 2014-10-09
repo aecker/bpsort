@@ -3,6 +3,7 @@
 p = fileparts(mfilename('fullpath'));
 addpath(p)
 addpath(fullfile(p, 'util'))
+addpath(fullfile(p, 'util', 'init'))
 addpath(fullfile(p, 'plot'))
 addpath(fullfile(p, 'data'))
 
