@@ -231,7 +231,7 @@ classdef BP
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(self.samples);
-            Tdt = self.dt * self.Fs;
+            Tdt = round(self.dt * self.Fs);
             Ndt = ceil(T / Tdt);
             
             % Pre-compute convolution matrix: MX * W = conv(X, W)
@@ -435,7 +435,7 @@ classdef BP
             self.log(false, 'Computing residuals... ')
             W = self.waveforms(U);
             T = size(V, 1);
-            Tdt = self.dt * self.Fs;
+            Tdt = round(self.dt * self.Fs);
             for i = 1 : size(X, 2)
                 spikes = find(X(:, i));
                 for j = 1 : numel(spikes)
@@ -464,7 +464,7 @@ classdef BP
             self.log(false, 'Estimating spike times... ')
             [T, K] = size(V);
             M = numel(priors);
-            Tdt = self.dt * self.Fs;
+            Tdt = round(self.dt * self.Fs);
             Ndt = ceil(T / Tdt);
             DL = zeros(T, M);
             A = zeros(T, M);
