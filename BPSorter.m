@@ -31,6 +31,7 @@ classdef BPSorter < handle
         matfile
         N
         K
+        bp
     end
     
     
@@ -40,6 +41,7 @@ classdef BPSorter < handle
             % Constructor for BPSorter class
             
             p = inputParser;
+            p.KeepUnmatched = true;
             p.addOptional('Debug', false);
             p.addOptional('TempDir', fullfile(tempdir(), datestr(now(), 'BP_yyyymmdd_HHMMSS')));
             p.addOptional('BlockSize', 60);
@@ -71,6 +73,9 @@ classdef BPSorter < handle
             end
             self.K = self.layout.n;
             
+            assert(~isfield(p.Unmatched, 'dt'), 'Cannot set parameter dt. Use BlockSize instead!')
+            self.bp = BP(self.layout, p.Unmatched);
+
             if ~exist(self.TempDir, 'file')
                 mkdir(self.TempDir)
             elseif ~self.Debug
