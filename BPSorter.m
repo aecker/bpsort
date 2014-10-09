@@ -1,4 +1,4 @@
-classdef BPSorter < handle
+classdef BPSorter < BP
     
     properties %#ok<*PROP,*CPROP>
         Debug               % debug mode (true|false)
@@ -6,7 +6,6 @@ classdef BPSorter < handle
         BlockSize           % size of blocks with constant waveform (sec)
         MaxSamples          % max number of samples to use
         HighPass            % highpass cutoff [stop, pass] (Hz)
-        Fs                  % target sampling rate (Hz, data will be resampled)
         
         % properties used for initialization only
         InitChannelOrder    % channel ordering (x|y|xy|yx)
@@ -27,11 +26,8 @@ classdef BPSorter < handle
     
     
     properties (SetAccess = private)
-        layout
         matfile
         N
-        K
-        bp
     end
     
     
@@ -61,20 +57,14 @@ classdef BPSorter < handle
             p.addOptional('InitSortTolerance', 0.0005);
             p.addOptional('InitSortCovRidge', 1.5);
             p.parse(varargin{:});
+            
+            assert(~isfield(p.Unmatched, 'dt'), 'Cannot set parameter dt. Use BlockSize instead!')
+            self = self@BP(layout, p.Unmatched);
+            
             par = fieldnames(p.Results);
             for i = 1 : numel(par)
                 self.(par{i}) = p.Results.(par{i});
             end
-            
-            if isa(layout, 'Layout')
-                self.layout = layout;
-            else
-                self.layout = Layout(layout);
-            end
-            self.K = self.layout.n;
-            
-            assert(~isfield(p.Unmatched, 'dt'), 'Cannot set parameter dt. Use BlockSize instead!')
-            self.bp = BP(self.layout, p.Unmatched);
 
             if ~exist(self.TempDir, 'file')
                 mkdir(self.TempDir)
