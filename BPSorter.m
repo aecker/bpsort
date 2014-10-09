@@ -96,10 +96,6 @@ classdef BPSorter < handle
         function readData(self, br)
             % Read raw data, downsample and store in local temp file
             
-            assert(self.K == getNbChannels(br), ...
-                'Dataset and channel layout are incompatible: %d vs. %d channels!', ...
-                getNbChannels(br), self.K)
-            
             % create memory-mapped Matlab file
             dataFile = fullfile(self.TempDir, 'data.mat');
             self.matfile = matfile(dataFile, 'writable', true);
@@ -113,6 +109,10 @@ classdef BPSorter < handle
                     return
                 end
             end
+            
+            assert(self.K == getNbChannels(br), ...
+                'Dataset and channel layout are incompatible: %d vs. %d channels!', ...
+                getNbChannels(br), self.K)
             
             % read data, resample, and store to temp file
             Fs = getSamplingRate(br);
