@@ -248,7 +248,7 @@ classdef BPSorter < BP
             
             % detect and sort spikes in groups
             models(nGroups) = m;
-            for i = 1 : nGroups
+            parfor i = 1 : nGroups
                 Vi = V(:, groups(i, :));
                 [t, w] = detectSpikes(Vi, self.Fs, self.InitDetectThresh, self.InitExtractWin);
                 b = extractFeatures(w, self.InitNumPC);
