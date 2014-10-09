@@ -1,6 +1,7 @@
 classdef BPSorter < handle
     
     properties %#ok<*PROP,*CPROP>
+        Debug               % debug mode (true|false)
         TempDir             % temporary folder
         BlockSize           % size of blocks with constant waveform (sec)
         MaxSamples          % max number of samples to use
@@ -32,6 +33,7 @@ classdef BPSorter < handle
             % Constructor for BPSorter class
             
             p = inputParser;
+            p.addOptional('Debug', false);
             p.addOptional('TempDir', fullfile(tempdir(), datestr(now(), 'BP_yyyymmdd_HHMMSS')));
             p.addOptional('BlockSize', 60);
             p.addOptional('MaxSamples', 2e7);
@@ -58,7 +60,7 @@ classdef BPSorter < handle
             
             if ~exist(self.TempDir, 'file')
                 mkdir(self.TempDir)
-            else
+            elseif ~self.Debug
                 delete([self.TempDir '/*'])
             end
             
@@ -69,9 +71,11 @@ classdef BPSorter < handle
         function delete(self)
             % Class destructor
             
-            % remove temp directory
-            delete(fullfile(self.TempDir, '*'))
-            rmdir(self.TempDir)
+            % remove temp directory unless in debug mode
+            if ~self.Debug
+                delete(fullfile(self.TempDir, '*'))
+                rmdir(self.TempDir)
+            end
         end
         
         
@@ -84,8 +88,13 @@ classdef BPSorter < handle
             
             % create memory-mapped Matlab file
             dataFile = fullfile(self.TempDir, 'data.mat');
-            save(dataFile, '-v7.3', 'dataFile'); % save something to create the file
             self.matfile = matfile(dataFile, 'writable', true);
+            if ~exist(dataFile, 'file')
+                nBlocksWritten = 0;
+                save(dataFile, '-v7.3', 'nBlocksWritten');
+            else
+                nBlocksWritten = self.matfile.nBlocksWritten;
+            end
             
             % read data, resample, and store to temp file
             Fs = getSamplingRate(br);
@@ -99,13 +108,14 @@ classdef BPSorter < handle
             self.N = (nBlocks - 1) * newBlockSize + lastBlockSize;
             h5create(dataFile, '/V', [self.N self.K], 'ChunkSize', [newBlockSize self.K]);
             fprintf('Creating temporary file containing resampled data [%d blocks]\n%s\n', nBlocks, dataFile)
-            for i = 1 : nBlocks
+            for i = nBlocksWritten + 1 : nBlocks
                 if ~rem(i, 10)
                     fprintf('%d ', i)
                 end
                 V = toMuV(br, resample(pr(i), p, q));
                 start = (i - 1) * newBlockSize;
-                self.matfile.V(start + (1 : newBlockSize), :) = V;
+                self.matfile.V(start + (1 : size(V, 1)), :) = V;
+                self.matfile.nBlocksWritten = i;
             end
             fprintf('done\n')
         end
