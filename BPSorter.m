@@ -11,7 +11,7 @@ classdef BPSorter < handle
         
         % properties used for initialization only
         InitChannelOrder    % channel ordering (x|y|xy|yx)
-        InitChannelNum      % number of channels to group
+        InitNumChannels     % number of channels to group
         InitDetectThresh    % multiple of noise SD used for spike detection
         InitExtractWin      % window used for extracting waveforms
         InitNumPC           % number of PCs to keep per channel for sorting
@@ -41,7 +41,7 @@ classdef BPSorter < handle
             p.addOptional('NyquistFreq', 6000);
             p.addOptional('DropClusterThresh', 0.6);
             p.addOptional('InitChannelOrder', 'y');
-            p.addOptional('InitChannelNum', 5);
+            p.addOptional('InitNumChannels', 5);
             p.addOptional('InitDetectThresh', 5);
             p.addOptional('InitExtractWin', -8 : 19);
             p.addOptional('InitNumPC', 3);
@@ -138,7 +138,7 @@ classdef BPSorter < handle
             
             % Create channel groups
             channels = self.layout.channelOrder(self.InitChannelOrder);
-            num = self.InitChannelNum;
+            num = self.InitNumChannels;
             idx = bsxfun(@plus, 1 : num, (0 : numel(channels) - num)');
             groups = channels(idx);
             nGroups = size(groups, 1);
