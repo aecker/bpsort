@@ -66,8 +66,8 @@ classdef BP
             p.addOptional('tempFiltLen', 0.5);
             p.addOptional('upsamplingFactor', 5, @(p) assert(mod(p, 2) == 1, 'Upsampling factor must be odd!'));
             p.addOptional('passband', [0.6 5] / 12);
-            p.addOptional('dt', 20);
-            p.addOptional('driftRate', 0.1);
+            p.addOptional('dt', 60);
+            p.addOptional('driftRate', 0.01);
             p.addOptional('sigmaAmpl', 0.05);
             p.addOptional('splitMinDPrime', 1);
             p.addOptional('splitMinPrior', 0.05);
@@ -262,7 +262,7 @@ classdef BP
                 E = size(B, 2);
             end
             U = zeros(E * M, K, Ndt);
-            Q = eye(E * M) * self.driftRate ^ 2;
+            Q = eye(E * M) * self.dt * self.driftRate;
             
             % Pre-compute MX' * MX
             if K > 1
