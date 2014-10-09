@@ -136,9 +136,8 @@ classdef BPSorter < handle
             % detect and sort spikes in groups
             for i = 1 : nGroups
                 Vi = V(:, groups(i, :));
-                [s, t] = self.detectSpikes(Vi);
-                w = self.extractWaveforms(Vi, s);
-                b = self.extractFeatures(w);
+                [t, w] = detectSpikes(Vi, self.Fs, self.InitDetectThresh, self.InitExtractWin);
+                b = extractFeatures(w, self.InitNumPC);
                 
                 % dt needs to be adjusted since we're skipping a fraction of the data
                 % drift rate is per ms, so it needs to be adjusted as well
@@ -147,87 +146,6 @@ classdef BPSorter < handle
                 model = model.fit(b, t);
                 
                 % NEED TO DO SOMETHING WITH IT!!
-            end
-        end
-        
-    end
-    
-    
-    methods (Access = private)
-        
-        function [s, t] = detectSpikes(self, V)
-            % Detect spikes.
-            %   [s, t] = self.detectSpikes(V) detects spikes in V. The
-            %   outputs s and t are column vectors of spike times in
-            %   samples and ms, respectively. By convention the time of the
-            %   zeroth sample is 0 ms.
-            
-            % detect local minima where at least one channel is above threshold
-            noiseSD = median(abs(V)) / 0.6745;
-            z = bsxfun(@rdivide, V, noiseSD);
-            mz = min(z, [], 2);
-            r = sqrt(sum(V .^ 2, 2));
-            dr = diff(r);
-            s = find(mz(2 : end - 1) < -self.InitDetectThresh & dr(1 : end - 1) > 0 & dr(2 : end) < 0) + 1;
-            
-            % remove spikes close to boundaries
-            s = s(s > self.InitExtractWin(1) & s < size(V, 1) - self.InitExtractWin(end));
-            
-            % if multiple spikes occur within 1 ms we keep only the largest
-            refractory = 1 / 1000 * self.Fs;
-            N = numel(s);
-            keep = true(N, 1);
-            last = 1;
-            for i = 2 : N
-                if s(i) - s(last) < refractory
-                    if r(s(i)) > r(s(last))
-                        keep(last) = false;
-                        last = i;
-                    else
-                        keep(i) = false;
-                    end
-                else
-                    last = i;
-                end
-            end
-            s = s(keep);
-            t = s / self.Fs * 1000; % convert to real times in ms
-        end
-        
-        
-        function w = extractWaveforms(self, V, s)
-            % Extract spike waveforms.
-            %   w = self.extractWaveforms(V, s) extracts the waveforms at
-            %   times s (given in samples) from the filtered signal V using
-            %   a fixed window around the times of the spikes. The return
-            %   value w is a 3d array of size length(InitExtractWin) x
-            %   #spikes x
-            %   #channels.
-            
-            win = self.InitExtractWin;
-            idx = bsxfun(@plus, s, win)';
-            w = reshape(V(idx, :), [length(win) numel(s) self.InitChannelNum]);
-        end
-        
-        
-        function b = extractFeatures(self, w)
-            % Extract features for spike sorting.
-            %   b = self.extractFeatures(w) extracts features for spike
-            %   sorting from the waveforms in w, which is a 3d array of
-            %   size length(InitExtractWin) x #spikes x #channels. The
-            %   output b is a matrix of size #spikes x #features.
-            %
-            %   We do PCA on the waveforms of each channel separately and
-            %   keep InitNumPC principal components per channel.
-            
-            [~, n, k] = size(w);
-            q = self.InitNumPC;                 % number of components per channel
-            w = bsxfun(@minus, w, mean(w, 2));  % center data
-            b = zeros(n, k * q);
-            for i = 1:k
-                C = w(:, :, i) * w(:, :, i)';   % covariance matrix
-                [V, ~] = eigs(C, q);            % first q eigenvectors
-                b(:, (1 : q) + q * (i - 1)) = w(:, :, i)' * V;
             end
         end
         
