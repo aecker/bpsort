@@ -43,7 +43,7 @@ classdef BPSorter < BP
             p.addOptional('BlockSize', 60);
             p.addOptional('MaxSamples', 2e7);
             p.addOptional('HighPass', [400 600]);
-            p.addOptional('Fs', 6000);
+            p.addOptional('Fs', 12000);
             p.addOptional('InitChannelOrder', 'y');
             p.addOptional('InitNumChannels', 5);
             p.addOptional('InitDetectThresh', 5);
@@ -257,7 +257,7 @@ classdef BPSorter < BP
             
             % remove duplicate clusters that were created above because the
             % channel groups overlap
-            X = self.removeDuplicateClusters(models, self.N);
+            X = self.removeDuplicateClusters(models, size(V, 1));
         end
         
         
@@ -306,7 +306,7 @@ classdef BPSorter < BP
                     nrm = sqrt(sum(sum(reshape(model.mu(:, :, j), [q K Ndt]), 1) .^ 2, 3));
                     [m, idx] = max(nrm);
                     if idx == center || (i == 1 && idx < center) || (i == nModels && idx > center)
-                        spikes{end + 1} = model.s(a == j); %#ok<AGROW>
+                        spikes{end + 1} = round(model.t(a == j) * self.Fs / 1000); %#ok<AGROW>
                         clusters{end + 1} = repmat(numel(spikes), size(spikes{end})); %#ok<AGROW>
                         mag(end + 1) = m; %#ok<AGROW>
                     end
@@ -315,8 +315,8 @@ classdef BPSorter < BP
             M = numel(spikes);
             spikesPerCluster = cellfun(@numel, spikes);
             
-            spikes = cat(1, spikes{:});
-            clusters = cat(1, clusters{:});
+            spikes = [spikes{:}];
+            clusters = [clusters{:}];
             
             % order spikes in time
             [spikes, order] = sort(spikes);
@@ -326,7 +326,7 @@ classdef BPSorter < BP
             totalSpikes = numel(spikes);
             keep = true(totalSpikes, 1);
             prev = 1;
-            refrac = self.InitOverlapTime * self.Fs;
+            refrac = self.InitOverlapTime * self.Fs / 1000;
             for i = 2 : totalSpikes
                 if spikes(i) - spikes(prev) < refrac
                     if mag(clusters(i)) < mag(clusters(prev))
