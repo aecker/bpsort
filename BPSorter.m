@@ -218,13 +218,13 @@ classdef BPSorter < BP
                 end
                 
                 % detect noise artifacts
-                V = reshape(V, [new.artifactBlockSize, nArtifactBlocksPerDataBlock, self.K]);
+                V = reshape(V, [new.artifactBlockSize, size(V, 1) / new.artifactBlockSize, self.K]);
                 artifact = any(median(abs(V), 1) / 0.6745 > self.ArtifactThresh, 3);
                 artifact = conv(double(artifact), ones(1, 3), 'same') > 0;
                 sa = (i - 1) * nArtifactBlocksPerDataBlock;
                 artifact(1) = artifact(1) || (i > 1 && self.matfile.artifact(sa, 1));
                 V(:, artifact, :) = 0;
-                V = reshape(V, new.blockSize, self.K);
+                V = reshape(V, [], self.K);
                 
                 % write to disk
                 sb = (i - 1) * new.blockSize;
@@ -233,7 +233,7 @@ classdef BPSorter < BP
                     self.matfile.V(sb + (-new.artifactBlockSize : 0), :) = 0;
                     self.matfile.artifact(sa, 1) = true;
                 end
-                self.matfile.artifact(sa + (1 : nArtifactBlocksPerDataBlock), 1) = artifact(:);
+                self.matfile.artifact(sa + (1 : numel(artifact)), 1) = artifact(:);
                 self.matfile.nBlocksWritten = i;
             end
             self.matfile.nBlocksWritten = inf;
