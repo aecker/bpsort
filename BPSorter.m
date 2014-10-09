@@ -15,6 +15,13 @@ classdef BPSorter < handle
         InitDetectThresh    % multiple of noise SD used for spike detection
         InitExtractWin      % window used for extracting waveforms
         InitNumPC           % number of PCs to keep per channel for sorting
+        
+        % parameters for initial spike sorting (see MoKsm)
+        InitSortDf          % degrees of freedom
+        InitSortClusterCost % penalty for adding cluster
+        InitSortDriftRate   % drift rate for mean waveform (Kalman filter)
+        InitSortTolerance   % convergence criterion
+        InitSortCovRidge    % ridge on covariance matrices (regularization)
     end
     
     
@@ -45,6 +52,11 @@ classdef BPSorter < handle
             p.addOptional('InitDetectThresh', 5);
             p.addOptional('InitExtractWin', -8 : 19);
             p.addOptional('InitNumPC', 3);
+            p.addOptional('InitSortDf', 5);
+            p.addOptional('InitSortClusterCost', 0.002);
+            p.addOptional('InitSortDriftRate', 400 / 3600 / 1000);
+            p.addOptional('InitSortTolerance', 0.0005);
+            p.addOptional('InitSortCovRidge', 1.5);
             p.parse(varargin{:});
             par = fieldnames(p.Results);
             for i = 1 : numel(par)
@@ -151,8 +163,12 @@ classdef BPSorter < handle
                 
                 % dt needs to be adjusted since we're skipping a fraction of the data
                 % drift rate is per ms, so it needs to be adjusted as well
-                model = MoKsm('DTmu', par.BlockSize / nskip * 1000, 'DriftRate', par.DriftRate * nskip, ...
-                    'ClusterCost', par.ClusterCost, 'Df', par.Df, 'Tolerance', par.Tolerance, 'CovRidge', par.CovRidge);
+                model = MoKsm('DTmu', self.BlockSize / nskip * 1000, ...
+                    'DriftRate', self.InitSortDriftRate * nskip, ...
+                    'ClusterCost', self.InitSortClusterCost, ...
+                    'Df', self.InitSortDf, ...
+                    'Tolerance', self.InitSortTolerance, ...
+                    'CovRidge', self.InitSortCovRidge);
                 model = model.fit(b, t);
                 
                 % NEED TO DO SOMETHING WITH IT!!
