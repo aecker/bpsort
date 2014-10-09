@@ -4,6 +4,8 @@ classdef BPSorter < BP
         Debug               % debug mode (true|false)
         TempDir             % temporary folder
         BlockSize           % size of blocks with constant waveform (sec)
+        ArtifactBlockSize   % block size used for detecting noise artifacts (sec)
+        ArtifactThresh      % threshold for artifact detection (SD of noise in muV)
         MaxSamples          % max number of samples to use
         HighPass            % highpass cutoff [stop, pass] (Hz)
         
@@ -41,6 +43,7 @@ classdef BPSorter < BP
             p.addOptional('Debug', false);
             p.addOptional('TempDir', fullfile(tempdir(), datestr(now(), 'BP_yyyymmdd_HHMMSS')));
             p.addOptional('BlockSize', 60);
+            p.addOptional('ArtifactBlockSize', 0.25)
             p.addOptional('MaxSamples', 2e7);
             p.addOptional('HighPass', [400 600]);
             p.addOptional('Fs', 12000);
@@ -65,6 +68,8 @@ classdef BPSorter < BP
             for i = 1 : numel(par)
                 self.(par{i}) = p.Results.(par{i});
             end
+            assert(rem(self.BlockSize / self.ArtifactBlockSize + 1e-5, 1) < 2e-5, ...
+                'BlockSize must be multiple of ArtifactBlockSize!')
 
             if ~exist(self.TempDir, 'file')
                 mkdir(self.TempDir)
@@ -183,17 +188,23 @@ classdef BPSorter < BP
                 getNbChannels(br), self.K)
             
             % read data, resample, and store to temp file
-            Fs = getSamplingRate(br);
-            fr = filteredReader(br, filterFactory.createHighpass(self.HighPass(1), self.HighPass(2), Fs));
-            blockSize = round(self.BlockSize * Fs);
-            pr = packetReader(fr, 1, 'stride', blockSize);
-            [p, q] = rat(self.Fs / Fs);
-            nBlocks = length(pr);
-            lastBlockSize = ceil((length(fr) - (nBlocks - 1) * blockSize) * p / q);
-            newBlockSize = ceil(blockSize * p / q);
-            self.N = (nBlocks - 1) * newBlockSize + lastBlockSize;
+            raw.Fs = getSamplingRate(br);
+            fr = filteredReader(br, filterFactory.createHighpass(self.HighPass(1), self.HighPass(2), raw.Fs));
+            raw.blockSize = round(self.BlockSize * raw.Fs);
+            raw.artifactBlockSize = round(self.ArtifactBlockSize * raw.Fs);
+            nArtifactBlocks = length(fr) / raw.artifactBlockSize;
+            nArtifactBlocksPerDataBlock = round(self.BlockSize / self.ArtifactBlockSize);
+            raw.N = fix(nArtifactBlocks) * raw.artifactBlockSize;
+            nBlocks = ceil(raw.N / raw.blockSize);
+            pr = packetReader(fr, 1, 'stride', raw.blockSize);
+            [p, q] = rat(self.Fs / raw.Fs);
+            new.lastBlockSize = ceil((raw.N - (nBlocks - 1) * raw.blockSize) * p / q);
+            new.blockSize = ceil(raw.blockSize * p / q);
+            new.artifactBlockSize = round(self.ArtifactBlockSize * self.Fs);
+            self.N = (nBlocks - 1) * new.blockSize + new.lastBlockSize;
             if ~nBlocksWritten
-                h5create(dataFile, '/V', [self.N self.K], 'ChunkSize', [newBlockSize self.K]);
+                h5create(dataFile, '/V', [self.N self.K], 'ChunkSize', [new.blockSize self.K]);
+                h5create(dataFile, '/artifact', [nArtifactBlocks 1]);
             end
             fprintf('Writing temporary file containing resampled data [%d blocks]\n%s\n', nBlocks, dataFile)
             for i = nBlocksWritten + 1 : nBlocks
@@ -201,8 +212,27 @@ classdef BPSorter < BP
                     fprintf('%d ', i)
                 end
                 V = toMuV(br, resample(pr(i), p, q));
-                start = (i - 1) * newBlockSize;
-                self.matfile.V(start + (1 : size(V, 1)), :) = V;
+                if i == nBlocks
+                    V = V(1 : new.lastBlockSize, :); % crop to multiple of artifact block size
+                end
+                
+                % detect noise artifacts
+                V = reshape(V, [new.artifactBlockSize, nArtifactBlocksPerDataBlock, self.K]);
+                artifact = any(median(abs(V), 1) / 0.6745 > self.ArtifactThreshold, 3);
+                artifact = conv(artifact, ones(1, 3), 'same') > 0;
+                sa = (i - 1) * nArtifactBlocksPerDataBlock;
+                artifact(1) = artifact(1) || (i > 1 && self.matfile.artifact(sa));
+                V(:, artifact, :) = 0;
+                V = reshape(V, new.blockSize, self.K);
+                
+                % write to disk
+                sb = (i - 1) * newBlockSize;
+                self.matfile.V(sb + (1 : size(V, 1)), :) = V;
+                if i > 1 && artifact(1)
+                    self.matfile.V(sb + (-new.artifactBlockSize : 0), :) = 0;
+                    self.matfile.artifact(sa) = true;
+                end
+                self.matfile.artifact(sa + (1 : nArtifactBlocksPerDataBlock)) = artifact;
                 self.matfile.nBlocksWritten = i;
             end
             self.matfile.nBlocksWritten = inf;
