@@ -7,7 +7,6 @@ classdef BPSorter < handle
         MaxSamples          % max number of samples to use
         HighPass            % highpass cutoff [stop, pass] (Hz)
         NyquistFreq         % Nyquist frequency (Hz)
-        DropClusterThresh   % threshold for dropping clusters
         
         % properties used for initialization only
         InitChannelOrder    % channel ordering (x|y|xy|yx)
@@ -15,6 +14,8 @@ classdef BPSorter < handle
         InitDetectThresh    % multiple of noise SD used for spike detection
         InitExtractWin      % window used for extracting waveforms
         InitNumPC           % number of PCs to keep per channel for sorting
+        InitDropClusterThresh   % threshold for dropping clusters
+        InitOverlapTime     % minimum distance between two spikes (ms)
         
         % parameters for initial spike sorting (see MoKsm)
         InitSortDf          % degrees of freedom
@@ -46,12 +47,13 @@ classdef BPSorter < handle
             p.addOptional('MaxSamples', 2e7);
             p.addOptional('HighPass', [400 600]);
             p.addOptional('NyquistFreq', 6000);
-            p.addOptional('DropClusterThresh', 0.6);
             p.addOptional('InitChannelOrder', 'y');
             p.addOptional('InitNumChannels', 5);
             p.addOptional('InitDetectThresh', 5);
             p.addOptional('InitExtractWin', -8 : 19);
             p.addOptional('InitNumPC', 3);
+            p.addOptional('InitDropClusterThresh', 0.6);
+            p.addOptional('InitOverlapTime', 0.4);
             p.addOptional('InitSortDf', 5);
             p.addOptional('InitSortClusterCost', 0.002);
             p.addOptional('InitSortDriftRate', 400 / 3600 / 1000);
@@ -133,7 +135,7 @@ classdef BPSorter < handle
         end
         
         
-        function initialize(self)
+        function X = initialize(self)
             % Initialize model
             
             % load subset of the data
@@ -155,24 +157,110 @@ classdef BPSorter < handle
             groups = channels(idx);
             nGroups = size(groups, 1);
             
+            % Spike sorter
+            %   dt needs to be adjusted since we're skipping a fraction of the data
+            %   drift rate is per ms, so it needs to be adjusted as well
+            m = MoKsm('DTmu', self.BlockSize / nskip * 1000, ...
+                'DriftRate', self.InitSortDriftRate * nskip, ...
+                'ClusterCost', self.InitSortClusterCost, ...
+                'Df', self.InitSortDf, ...
+                'Tolerance', self.InitSortTolerance, ...
+                'CovRidge', self.InitSortCovRidge);
+            
             % detect and sort spikes in groups
+            models(nGroups) = m;
             for i = 1 : nGroups
                 Vi = V(:, groups(i, :));
                 [t, w] = detectSpikes(Vi, self.Fs, self.InitDetectThresh, self.InitExtractWin);
                 b = extractFeatures(w, self.InitNumPC);
-                
-                % dt needs to be adjusted since we're skipping a fraction of the data
-                % drift rate is per ms, so it needs to be adjusted as well
-                model = MoKsm('DTmu', self.BlockSize / nskip * 1000, ...
-                    'DriftRate', self.InitSortDriftRate * nskip, ...
-                    'ClusterCost', self.InitSortClusterCost, ...
-                    'Df', self.InitSortDf, ...
-                    'Tolerance', self.InitSortTolerance, ...
-                    'CovRidge', self.InitSortCovRidge);
-                model = model.fit(b, t);
-                
-                % NEED TO DO SOMETHING WITH IT!!
+                models(i) = m.fit(b, t);
             end
+            
+            % remove duplicate clusters that were created above because the
+            % channel groups overlap
+            X = self.removeDuplicateClusters(models, self.N);
+        end
+        
+    end
+    
+    
+    methods (Access = private)
+        
+        function X = removeDuplicateClusters(self, models, N)
+            % Remove duplicate clusters.
+            %   X = self.keepMaxClusters(models, N) keeps only those
+            %   clusters that have their largest waveform on the center
+            %   channel. The models are assumed to be fitted to groups of K
+            %   channels, with K-1 channels overlap between adjacent
+            %   models. Duplicate spikes are removed, keeping the spike
+            %   from the cluster with the larger waveform.
+            
+            % find all clusters having maximum energy on the center channel
+            K = self.InitNumChannels;
+            center = (K + 1) / 2;
+            q = self.InitNumPC;
+            nModels = numel(models);
+            spikes = {};
+            clusters = {};
+            mag = [];
+            for i = 1 : nModels
+                model = models(i);
+                a = model.cluster();
+                [~, Ndt, M] = size(model.mu);
+                for j = 1 : M;
+                    nrm = sqrt(sum(sum(reshape(model.mu(:, :, j), [q K Ndt]), 1) .^ 2, 3));
+                    [m, idx] = max(nrm);
+                    if idx == center || (i == 1 && idx < center) || (i == nModels && idx > center)
+                        spikes{end + 1} = model.s(a == j); %#ok<AGROW>
+                        clusters{end + 1} = repmat(numel(spikes), size(spikes{end})); %#ok<AGROW>
+                        mag(end + 1) = m; %#ok<AGROW>
+                    end
+                end
+            end
+            M = numel(spikes);
+            spikesPerCluster = cellfun(@numel, spikes);
+            
+            spikes = cat(1, spikes{:});
+            clusters = cat(1, clusters{:});
+            
+            % order spikes in time
+            [spikes, order] = sort(spikes);
+            clusters = clusters(order);
+            
+            % remove smaller spikes from overlaps
+            totalSpikes = numel(spikes);
+            keep = true(totalSpikes, 1);
+            prev = 1;
+            refrac = self.InitOverlapTime * self.Fs;
+            for i = 2 : totalSpikes
+                if spikes(i) - spikes(prev) < refrac
+                    if mag(clusters(i)) < mag(clusters(prev))
+                        keep(i) = false;
+                    else
+                        keep(prev) = false;
+                        prev = i;
+                    end
+                else
+                    prev = i;
+                end
+            end
+            spikes = spikes(keep);
+            clusters = clusters(keep);
+            
+            % remove clusters that lost too many spikes to other clusters
+            frac = hist(clusters, 1 : M) ./ spikesPerCluster;
+            keep = true(numel(spikes), 1);
+            for i = 1 : M
+                if frac(i) < self.InitDropClusterThresh
+                    keep(clusters == i) = false;
+                end
+            end
+            spikes = spikes(keep);
+            clusters = clusters(keep);
+            [~, ~, clusters] = unique(clusters);
+            
+            % create spike matrix
+            X = sparse(spikes, clusters, 1, N, max(clusters));
         end
         
     end
