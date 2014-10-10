@@ -271,7 +271,7 @@ classdef BP < handle
                 for t = 2 : Ndt
                     idx = borders(t) + 1 : borders(t + 1);
                     MX{t} = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
-                    BMXprod(:, :, t) = getBMXprod(MX{t}, B);
+                    BMXprod(:, :, t) = BP.getBMXprod(MX{t}, B);
                 end
             end
             
@@ -291,7 +291,7 @@ classdef BP < handle
             
             % using pinv() instead of \ because MXprod can be rank-
             % deficient if there are no or only few spikes for some neurons
-            U(:, :, 1) = pinv(getBMXprod(MX1, B)) * BMX1V;
+            U(:, :, 1) = pinv(BP.getBMXprod(MX1, B)) * BMX1V;
             
             % Initialize state covariance
             n = full(sum(MX1, 1));
@@ -327,7 +327,7 @@ classdef BP < handle
                     else
                         idx = borders(t) + 1 : borders(t + 1);
                         MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
-                        BMXp = getBMXprod(MXt, B);
+                        BMXp = BP.getBMXprod(MXt, B);
                     end
                     Kp = Pt * (I - BMXp / (Pti(:, :, t) + BMXp)); % Kalman gain (K = Kp * MX)
                     KpBMXp = Kp * BMXp;
@@ -771,27 +771,32 @@ classdef BP < handle
         end
         
     end
-end
-
-
-function BMXprod = getBMXprod(MX, B)
-% Compute B' * MX' * MX * B efficiently.
-
-    MXp = MX' * MX;
-    if ~isempty(B)
-        [D, E] = size(B);
-        M = size(MX, 2) / D;
-        BMXprod = zeros(E * M);
-        for mi = 1 : M
-            iD = (mi - 1) * D + (1 : D);
-            iE = (mi - 1) * E + (1 : E);
-            for mj = 1 : M
-                jD = (mj - 1) * D + (1 : D);
-                jE = (mj - 1) * E + (1 : E);
-                BMXprod(iE, jE) = B' * MXp(iD, jD) * B;
+    
+    
+    methods (Static)
+        
+        function BMXprod = getBMXprod(MX, B)
+            % Compute B' * MX' * MX * B efficiently.
+            
+            MXp = MX' * MX;
+            if ~isempty(B)
+                [D, E] = size(B);
+                M = size(MX, 2) / D;
+                BMXprod = zeros(E * M);
+                for mi = 1 : M
+                    iD = (mi - 1) * D + (1 : D);
+                    iE = (mi - 1) * E + (1 : E);
+                    for mj = 1 : M
+                        jD = (mj - 1) * D + (1 : D);
+                        jE = (mj - 1) * E + (1 : E);
+                        BMXprod(iE, jE) = B' * MXp(iD, jD) * B;
+                    end
+                end
+            else
+                BMXprod = full(MXp);
             end
         end
-    else
-        BMXprod = MXp;
+        
     end
+    
 end
