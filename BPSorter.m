@@ -57,8 +57,8 @@ classdef BPSorter < BP
             p.addOptional('InitOverlapTime', 0.4);
             p.addOptional('InitSortDf', 5);
             p.addOptional('InitSortClusterCost', 0.002);
-            p.addOptional('InitSortDriftRate', 400 / 3600 / 1000);
-            p.addOptional('InitSortTolerance', 0.005);
+            p.addOptional('InitSortDriftRate', 10 / 3600 / 1000);
+            p.addOptional('InitSortTolerance', 0.0005);
             p.addOptional('InitSortCovRidge', 1.5);
             p.parse(varargin{:});
             
