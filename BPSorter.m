@@ -385,6 +385,163 @@ classdef BPSorter < BP
             X = sparse(spikes, clusters, 1, N, max(clusters));
         end
         
+        
+        function [X, U] = estimateByBlock(self, Uw, priors, temporal, spatial)
+            % Estimate model on full dataset working blockwise
+            
+            % determine active channels for each neuron
+            active = petmute(max(sum(abs(Uw), 1), [], 4) > 1e-6, [2 3 1]);
+            
+            blockSize = self.BlockSize * self.Fs;
+            nBlocks = ceil(self.N / blockSize);
+            M = numel(priors);
+            
+            X = cell(1, nBlocks);
+            Uf = cell(K, nBlocks);
+            P = cell(K, nBlocks);
+            for t = 1 : nBlocks
+                
+                % read data
+                start = (t - 1) * blockSize;
+                idx = start + (1 : min(self.N - start, blockSize));
+                V = self.matfile.V(idx, :);
+                
+                % whiten data
+                Vw = zeros(size(V));
+                for k = 1 : self.K
+                    Vw(:, k) = conv(V(:, k), temporal(:, k), 'same');
+                end
+                Vw = Vw * spatial;
+                
+                % estimate spikes
+                X{t} = self.estimateSpikes(Vw, Uw(:, :, :, min(t, end)), priors);
+                
+                % estimate waveforms (forward pass)
+                tt = t - 1;
+                [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)));
+            end
+            
+            % Backward pass
+            U = zeros(E * M, K, nBlocks);
+            for t = nBlocks - 1 : -1 : 1
+                for k = 1 : K
+                    Ct = P{k, t} / P{k, t + 1};
+                    a = reshape(repmat(active(k, :), E, 1), [], 1);
+                    U(a, k, t) = Uf{k, t} + Ct * (Uf{k, t + 1} - Uf{k, t});
+                end
+            end
+            
+            % Re-organize waveforms by cluster
+            U = reshape(U, [E M K nBlocks]);
+            U = permute(U, [1 3 2 4]);            
+        end
+        
+        
+        function [U, P] = estimateWaveformsFwdPass(self, V, X, active, U, P)
+            
+            % Pre-compute convolution matrix: MX * W = conv(X, W)
+            [i, j, x] = find(X);
+            r = imag(x);
+            aE = real(x);
+            d = 2 * (r > 0) - 1;
+            i = [i; i + d];
+            i = bsxfun(@plus, i, self.samples);
+            valid = find(i > 0 & i <= T);
+            j = bsxfun(@plus, (j - 1) * D, 1 : D);
+            j = [j; j];
+            x = repmat([aE .* (1 - abs(r)); aE .* abs(r)], 1, D);
+            
+            [i, order] = sort(i(valid));
+            j = j(valid(order));
+            x = x(valid(order));
+            
+            [Tdt, M] = size(X);
+            K = self.K;
+            B = self.waveformBasis;
+            if isempty(B)
+                E = D;
+            else
+                E = size(B, 2);
+            end
+            
+            % Pre-compute MX' * MX
+            MX = sparse(i, j, x, Tdt, D * M);
+            BMXp = BP.getBMXprod(MX, B);
+            
+            % Initialize or forward step?
+            if isempty(U)
+                
+                MXV = MX' * V;
+                if isempty(B)
+                    BMXV = MXV;
+                else
+                    BMXV = zeros(E * M, K);
+                    for m = 1 : M
+                        iD = (m - 1) * D + (1 : D);
+                        iE = (m - 1) * E + (1 : E);
+                        BMXV(iE, :) = B' * MXV(iD, :);
+                    end
+                end
+                
+                % using pinv() instead of \ because MXprod can be rank-
+                % deficient if there are no or only few spikes for some neurons
+                U1 = pinv(BP.getBMXprod(MX, B)) * BMXV;
+                
+                % Initialize state covariance
+                n = full(sum(MX, 1));
+                P = diag(1 ./ (n + ~n));
+                if ~isempty(B)
+                    P1 = zeros(E * M);
+                    for m = 1 : M
+                        iD = (m - 1) * D + (1 : D);
+                        iE = (m - 1) * E + (1 : E);
+                        P1(iE, iE) = B' * P(iD, iD) * B;
+                    end
+                else
+                    P1 = P;
+                end
+                
+                % account for pruning
+                U = cell(K, 1);
+                P = cell(K, 1);
+                for k = 1 : K
+                    a = reshape(repmat(active(k, :), E, 1), [], 1);
+                    U{k} = U1(a, k);
+                    P{k} = P1(a, a);
+                end
+            else 
+                for k = 1 : K
+                    
+                    Mk = sum(active(k, :));
+                    aE = reshape(repmat(active(k, :), E, 1), [], 1);
+                    aD = reshape(repmat(active(k, :), D, 1), [], 1);
+                    I = eye(E * Mk);
+                    Q = I * self.dt * self.driftRate;
+                    
+                    % Predict
+                    Pk = P{k} + Q;
+                    Uk = U{k};
+                    
+                    % Update
+                    Kp = Pk * (I - BMXp(aE, aE) / (inv(Pk) + BMXp(aE, aE))); % Kalman gain (K = Kp * MX)
+                    KpBMXp = Kp * BMXp(aE, aE);
+                    MXV = MX(:, aD)' * V(:, k);
+                    if isempty(B)
+                        BMXV = MXV;
+                    else
+                        BMXV = zeros(E * Mk, 1);
+                        for m = 1 : Mk
+                            iD = (m - 1) * D + (1 : D);
+                            iE = (m - 1) * E + (1 : E);
+                            BMXV(iE) = B' * MXV(iD);
+                        end
+                    end
+                    U{k} = Uk + Kp * BMXV - KpBMXp * Uk;
+                    P{k} = (I - KpBMXp) * Pk;
+                end
+            end
+        end
+        
     end
     
 end
