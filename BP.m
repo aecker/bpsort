@@ -362,7 +362,7 @@ classdef BP < handle
         end
         
         
-        function V = whitenData(self, V, R)
+        function [V, temporal, spatial] = whitenData(self, V, R)
             % Whiten data.
             %   V = self.whitenData(V, R) whitens the data V, assuming
             %   that the spatio-temporal covariance separates into a
@@ -382,7 +382,8 @@ classdef BP < handle
             Q = dftmtx(k);
             
             % temporal whitening
-            for i = 1 : size(V, 2)
+            temporal = zeros(2 * q + 1, self.K);
+            for i = 1 : self.K
                 
                 % construct filter for temporal whitening
                 c = xcorr(R(:, i), 2 * q, 'coeff');
@@ -394,6 +395,7 @@ classdef BP < handle
                 ci(low) = 0;
                 w = real(Q * (sqrt(ci) .* Q(2 * q + 1, :)') / k);
                 w = w(q + 1 : end - q);
+                temporal(:, i) = w;
 
                 % apply temporal whitening filter
                 V(:, i) = conv(V(:, i), w, 'same');
@@ -401,7 +403,8 @@ classdef BP < handle
             end
             
             % spatial whitening
-            V = V * chol(inv(cov(R)))';
+            spatial = chol(inv(cov(R)))';
+            V = V * spatial;
             
             self.log(true)
         end
