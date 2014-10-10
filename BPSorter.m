@@ -97,7 +97,7 @@ classdef BPSorter < BP
             % initialize on subset of the data using traditional spike
             % detection + sorting algorithm
             self.log(false, 'Initializing model using Mixture of Kalman filter model...\n')
-            [V, X0] = self.initialize();
+            [V, X] = self.initialize();
             
             % fit BP model on subset of the data
             self.log('Starting to fit BP model on subset of the data\n\n')
@@ -110,12 +110,12 @@ classdef BPSorter < BP
             self.driftRate = self.driftRate / fraction;
             
             % whiten data
-            U = self.estimateWaveforms(V, X0);
-            V = self.whitenData(V, self.residuals(V, X0, U));
+            U = self.estimateWaveforms(V, X);
+            [V, temporal, spatial] = self.whitenData(V, self.residuals(V, X, U));
             
             split = true;
             doneSplitMerge = false;
-            priors = sum(X0 > 0, 1) / size(X0, 1);
+            priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
             iter = 1;
             M = 0;
@@ -157,11 +157,7 @@ classdef BPSorter < BP
             % final run in chunks over entire dataset
             self.dt = self.BlockSize;
             self.driftRate = self.driftRate * fraction;
-            [X, U] = self.bp.estimateByBlock(Uw, priors);
-            
-            % apply the same pruning as to whitened waveforms
-            nnz = max(sum(abs(Uw), 1), [], 4) > 1e-6;
-            U = bsxfun(@times, U, nnz);
+            [X, U] = self.estimateByBlock(Uw, priors, temporal, spatial);
             
             self.log('\n--\nDone fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
