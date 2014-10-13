@@ -390,11 +390,12 @@ classdef BPSorter < BP
             % Estimate model on full dataset working blockwise
             
             % determine active channels for each neuron
-            active = petmute(max(sum(abs(Uw), 1), [], 4) > 1e-6, [2 3 1]);
+            active = permute(max(sum(abs(Uw), 1), [], 4) > 1e-6, [2 3 1]);
             
             blockSize = self.BlockSize * self.Fs;
             nBlocks = ceil(self.N / blockSize);
             M = numel(priors);
+            K = self.K;
             
             X = cell(1, nBlocks);
             Uf = cell(K, nBlocks);
@@ -418,7 +419,7 @@ classdef BPSorter < BP
                 
                 % estimate waveforms (forward pass)
                 tt = t - 1;
-                [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)));
+                [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X{t}, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)));
             end
             
             % Backward pass
@@ -442,14 +443,15 @@ classdef BPSorter < BP
             % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
             r = imag(x);
-            aE = real(x);
+            a = real(x);
             d = 2 * (r > 0) - 1;
             i = [i; i + d];
             i = bsxfun(@plus, i, self.samples);
-            valid = find(i > 0 & i <= T);
+            valid = find(i > 0 & i <= size(V, 1));
+            D = self.D;
             j = bsxfun(@plus, (j - 1) * D, 1 : D);
             j = [j; j];
-            x = repmat([aE .* (1 - abs(r)); aE .* abs(r)], 1, D);
+            x = repmat([a .* (1 - abs(r)); a .* abs(r)], 1, D);
             
             [i, order] = sort(i(valid));
             j = j(valid(order));
