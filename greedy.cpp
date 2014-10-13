@@ -31,7 +31,8 @@ int flip(mxArray *X, const mxArray *DL, const mxArray *A, const mxArray *dDL,
         const mxArray *wws, const mxArray *wVs)
 {
     const mwSize *sz = mxGetDimensions(dDL);
-    mwSize D = sz[0], M = sz[1], p = sz[3], Ndt = sz[4];
+    mwSize D = sz[0], M = sz[1], p = sz[3];
+    mwSize Ndt = mxGetNumberOfDimensions(dDL) == 5 ? sz[4] : 1;
     mwSize N = mxGetM(DL);
     mwSize Tdt = ceil((double) N / (double) Ndt);
     mwSize lenh = mxGetM(h);
