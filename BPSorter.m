@@ -423,18 +423,20 @@ classdef BPSorter < BP
             end
             
             % Backward pass
+            E = size(Uw, 1);
             U = zeros(E * M, K, nBlocks);
-            for t = nBlocks - 1 : -1 : 1
-                for k = 1 : K
+            for k = 1 : K
+                a = reshape(repmat(active(k, :), E, 1), [], 1);
+                U(a, k, end) = Uf{k, end};
+                for t = nBlocks - 1 : -1 : 1
                     Ct = P{k, t} / P{k, t + 1};
-                    a = reshape(repmat(active(k, :), E, 1), [], 1);
                     U(a, k, t) = Uf{k, t} + Ct * (Uf{k, t + 1} - Uf{k, t});
                 end
             end
             
             % Re-organize waveforms by cluster
             U = reshape(U, [E M K nBlocks]);
-            U = permute(U, [1 3 2 4]);            
+            U = permute(U, [1 3 2 4]);
         end
         
         
