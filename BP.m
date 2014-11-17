@@ -167,9 +167,11 @@ classdef BP < handle
             end
             
             % initial estimate of waveforms in non-whitened, whitening
-            U = self.estimateWaveforms(V, X);
+            driftVar = self.dt * self.driftRate;
+            U = self.estimateWaveforms(V, X, driftVar);
             R = self.residuals(V, X, U);
             Vw = self.whitenData(V, R);
+            driftVarWhitened = driftVar / mean(var(V) ./ var(Vw));
             
             split = true;
             doneSplitMerge = false;
@@ -179,7 +181,7 @@ classdef BP < handle
             while i < iter || ~doneSplitMerge
                 
                 % estimate waveforms
-                Uw = self.estimateWaveforms(Vw, X);
+                Uw = self.estimateWaveforms(Vw, X, driftVarWhitened);
                 
                 % merge templates that are too similar
                 if ~doneSplitMerge
@@ -210,7 +212,7 @@ classdef BP < handle
             
             % Re-estimate non-whitened waveforms and apply the same pruning
             % as to whitened waveforms
-            U = self.estimateWaveforms(V, X);
+            U = self.estimateWaveforms(V, X, driftVar);
             nnz = max(sum(abs(Uw), 1), [], 4) > 1e-6;
             U = bsxfun(@times, U, nnz);
             
@@ -221,11 +223,19 @@ classdef BP < handle
         end
         
         
-        function U = estimateWaveforms(self, V, X)
+        function U = estimateWaveforms(self, V, X, drift)
             % Estimate waveform templates given spike times.
-            %   U = self.estimateWaveforms(V, X) estimates the waveform
-            %   coefficients U given the observed voltage V and the current
-            %   estimate of the spike times X.
+            %   U = self.estimateWaveforms(V, X, drift) estimates the
+            %   waveform coefficients U given the observed voltage V, the
+            %   current estimate of the spike times X and the given
+            %   waveform drift variance.
+            %
+            %   NOTE: the drift variance is passed here instead of using
+            %         self.driftRate because it depends on the SD of V,
+            %         which differs between whitened and non-whitened data.
+            %         This could be fixed by expressing the drift rate
+            %         relative to the SD of V, but we chose to express it
+            %         in muV instead.
             
             self.log(false, 'Estimating waveforms... ')
             [T, K] = size(V);
@@ -262,7 +272,7 @@ classdef BP < handle
                 E = size(B, 2);
             end
             U = zeros(E * M, K, Ndt);
-            Q = eye(E * M) * self.dt * self.driftRate;
+            Q = eye(E * M) * drift;
             
             % Pre-compute MX' * MX
             if K > 1

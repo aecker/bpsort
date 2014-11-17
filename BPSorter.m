@@ -102,16 +102,12 @@ classdef BPSorter < BP
             % fit BP model on subset of the data
             self.log('Starting to fit BP model on subset of the data\n\n')
             
-            % adjust dt and driftRate to account for the fact that we're
-            % using only subsets of each block
-            nBlocks = fix(self.N / (self.BlockSize * self.Fs));
-            fraction = (size(V, 1) / nBlocks / self.Fs) / self.BlockSize;
-            self.dt = self.BlockSize * fraction;
-            self.driftRate = self.driftRate / fraction;
-            
             % whiten data
-            U = self.estimateWaveforms(V, X);
+            driftVar = self.BlockSize * self.driftRate;
+            v = var(V);
+            U = self.estimateWaveforms(V, X, driftVar);
             [V, temporal, spatial] = self.whitenData(V, self.residuals(V, X, U));
+            driftVarWhitened = driftVar / mean(v ./ var(V));
             
             split = true;
             doneSplitMerge = false;
@@ -122,7 +118,6 @@ classdef BPSorter < BP
             while i <= iter || ~doneSplitMerge
                 
                 % estimate waveforms
-                Uw = self.estimateWaveforms(V, X);
                 
                 % merge templates that are too similar
                 if ~doneSplitMerge
@@ -136,6 +131,7 @@ classdef BPSorter < BP
                 else
                     M = numel(priors);
                 end
+                Uw = self.estimateWaveforms(V, X, driftVarWhitened);
                 
                 % prune waveforms and estimate spikes
                 Uw = self.pruneWaveforms(Uw);
