@@ -168,7 +168,8 @@ classdef BP < handle
             
             % initial estimate of waveforms in non-whitened, whitening
             driftVar = self.dt * self.driftRate;
-            U = self.estimateWaveforms(V, X, driftVar);
+            blockSize = self.dt * self.Fs;
+            U = self.estimateWaveforms(V, X, blockSize, driftVar);
             R = self.residuals(V, X, U);
             Vw = self.whitenData(V, R);
             driftVarWhitened = driftVar / mean(var(V) ./ var(Vw));
@@ -181,7 +182,7 @@ classdef BP < handle
             while i < iter || ~doneSplitMerge
                 
                 % estimate waveforms
-                Uw = self.estimateWaveforms(Vw, X, driftVarWhitened);
+                Uw = self.estimateWaveforms(Vw, X, blockSize, driftVarWhitened);
                 
                 % merge templates that are too similar
                 if ~doneSplitMerge
@@ -212,7 +213,7 @@ classdef BP < handle
             
             % Re-estimate non-whitened waveforms and apply the same pruning
             % as to whitened waveforms
-            U = self.estimateWaveforms(V, X, driftVar);
+            U = self.estimateWaveforms(V, X, blockSize, driftVar);
             nnz = max(sum(abs(Uw), 1), [], 4) > 1e-6;
             U = bsxfun(@times, U, nnz);
             
@@ -223,12 +224,13 @@ classdef BP < handle
         end
         
         
-        function U = estimateWaveforms(self, V, X, drift)
+        function U = estimateWaveforms(self, V, X, blockSize, drift)
             % Estimate waveform templates given spike times.
-            %   U = self.estimateWaveforms(V, X, drift) estimates the
-            %   waveform coefficients U given the observed voltage V, the
-            %   current estimate of the spike times X and the given
-            %   waveform drift variance.
+            %   U = self.estimateWaveforms(V, X, blockSize, drift)
+            %   estimates the waveform coefficients U given the observed
+            %   voltage V and the current estimate of the spike times X.
+            %   The Kalman filter used to track waveform drift uses the
+            %   given blockSize and drift variance.
             %
             %   NOTE: the drift variance is passed here instead of using
             %         self.driftRate because it depends on the SD of V,
@@ -241,8 +243,7 @@ classdef BP < handle
             [T, K] = size(V);
             M = size(X, 2);
             D = numel(self.samples);
-            Tdt = round(self.dt * self.Fs);
-            Ndt = ceil(T / Tdt);
+            Ndt = ceil(T / blockSize);
             
             % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
@@ -262,7 +263,7 @@ classdef BP < handle
             
             borders = zeros(1, Ndt + 1);
             for t = 1 : Ndt
-                borders(t + 1) = find(i <= t * Tdt, 1, 'last');
+                borders(t + 1) = find(i <= t * blockSize, 1, 'last');
             end
             
             B = self.waveformBasis;
@@ -280,14 +281,14 @@ classdef BP < handle
                 BMXprod = zeros(E * M, E * M, Ndt);
                 for t = 2 : Ndt
                     idx = borders(t) + 1 : borders(t + 1);
-                    MX{t} = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
+                    MX{t} = sparse(i(idx) - (t - 1) * blockSize, j(idx), x(idx), blockSize, D * M);
                     BMXprod(:, :, t) = BP.getBMXprod(MX{t}, B);
                 end
             end
             
             % Initialize
-            MX1 = sparse(i(1 : borders(2)), j(1 : borders(2)), x(1 : borders(2)), Tdt, D * M);
-            MX1V = MX1' * V(1 : Tdt, :);
+            MX1 = sparse(i(1 : borders(2)), j(1 : borders(2)), x(1 : borders(2)), blockSize, D * M);
+            MX1V = MX1' * V(1 : blockSize, :);
             if isempty(B)
                 BMX1V = MX1V;
             else
@@ -336,12 +337,12 @@ classdef BP < handle
                         BMXp = BMXprod(:, :, t);
                     else
                         idx = borders(t) + 1 : borders(t + 1);
-                        MXt = sparse(i(idx) - (t - 1) * Tdt, j(idx), x(idx), Tdt, D * M);
+                        MXt = sparse(i(idx) - (t - 1) * blockSize, j(idx), x(idx), blockSize, D * M);
                         BMXp = BP.getBMXprod(MXt, B);
                     end
                     Kp = Pt * (I - BMXp / (Pti(:, :, t) + BMXp)); % Kalman gain (K = Kp * MX)
                     KpBMXp = Kp * BMXp;
-                    tt = (t - 1) * Tdt + (1 : Tdt);
+                    tt = (t - 1) * blockSize + 1 : min(t * blockSize, size(V, 1));
                     MXtV = MXt' * V(tt, k);
                     if isempty(B)
                         BMXtV = MXtV;

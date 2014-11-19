@@ -97,7 +97,7 @@ classdef BPSorter < BP
             % initialize on subset of the data using traditional spike
             % detection + sorting algorithm
             self.log(false, 'Initializing model using Mixture of Kalman filter model...\n')
-            [V, X] = self.initialize();
+            [V, X, subBlockSize] = self.initialize();
             
             % fit BP model on subset of the data
             self.log('Starting to fit BP model on subset of the data\n\n')
@@ -105,7 +105,7 @@ classdef BPSorter < BP
             % whiten data
             driftVar = self.BlockSize * self.driftRate;
             v = var(V);
-            U = self.estimateWaveforms(V, X, driftVar);
+            U = self.estimateWaveforms(V, X, subBlockSize, driftVar);
             [V, temporal, spatial] = self.whitenData(V, self.residuals(V, X, U));
             driftVarWhitened = driftVar / mean(v ./ var(V));
             
@@ -118,6 +118,7 @@ classdef BPSorter < BP
             while i <= iter || ~doneSplitMerge
                 
                 % estimate waveforms
+                Uw = self.estimateWaveforms(V, X, subBlockSize, driftVarWhitened);
                 
                 % merge templates that are too similar
                 if ~doneSplitMerge
@@ -131,7 +132,6 @@ classdef BPSorter < BP
                 else
                     M = numel(priors);
                 end
-                Uw = self.estimateWaveforms(V, X, driftVarWhitened);
                 
                 % prune waveforms and estimate spikes
                 Uw = self.pruneWaveforms(Uw);
@@ -233,12 +233,13 @@ classdef BPSorter < BP
         end
         
         
-        function [V, X] = initialize(self)
+        function [V, X, subBlockSize] = initialize(self)
             % Initialize model
             
             % load subset of the data
             nskip = ceil(self.N / self.MaxSamples);
             if nskip == 1
+                subBlockSize = self.BlockSize * self.Fs;
                 V = self.matfile.V; % load full dataset
             else
                 blockSize = self.BlockSize * self.Fs;
