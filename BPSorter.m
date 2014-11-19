@@ -434,6 +434,11 @@ classdef BPSorter < BP
             % Re-organize waveforms by cluster
             U = reshape(U, [E M K nBlocks]);
             U = permute(U, [1 3 2 4]);
+            
+            % create spike matrix
+            [i, j, x] = cellfun(@find, X, 'uni', false);
+            i = arrayfun(@(i, s) i{1} + s, i, (0 : nBlocks - 1) * blockSize, 'uni', false);
+            X = sparse(cat(1, i{:}), cat(1, j{:}), cat(1, x{:}), self.N, M);
         end
         
         
