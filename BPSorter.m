@@ -151,9 +151,7 @@ classdef BPSorter < BP
             Uw = self.orderTemplates(Uw, X, priors, 'yx');
             
             % final run in chunks over entire dataset
-            self.dt = self.BlockSize;
-            self.driftRate = self.driftRate * fraction;
-            [X, U] = self.estimateByBlock(Uw, priors, temporal, spatial);
+            [X, U] = self.estimateByBlock(Uw, priors, temporal, spatial, driftVarWhitened);
             
             self.log('\n--\nDone fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
@@ -383,7 +381,7 @@ classdef BPSorter < BP
         end
         
         
-        function [X, U] = estimateByBlock(self, Uw, priors, temporal, spatial)
+        function [X, U] = estimateByBlock(self, Uw, priors, temporal, spatial, drift)
             % Estimate model on full dataset working blockwise
             
             % determine active channels for each neuron
@@ -416,7 +414,7 @@ classdef BPSorter < BP
                 
                 % estimate waveforms (forward pass)
                 tt = t - 1;
-                [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X{t}, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)));
+                [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X{t}, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)), drift);
             end
             
             % Backward pass
@@ -442,7 +440,7 @@ classdef BPSorter < BP
         end
         
         
-        function [U, P] = estimateWaveformsFwdPass(self, V, X, active, U, P)
+        function [U, P] = estimateWaveformsFwdPass(self, V, X, active, U, P, drift)
             
             % Pre-compute convolution matrix: MX * W = conv(X, W)
             [i, j, x] = find(X);
@@ -522,7 +520,7 @@ classdef BPSorter < BP
                     aE = reshape(repmat(active(k, :), E, 1), [], 1);
                     aD = reshape(repmat(active(k, :), D, 1), [], 1);
                     I = eye(E * Mk);
-                    Q = I * self.dt * self.driftRate;
+                    Q = I * drift;
                     
                     % Predict
                     Pk = P{k} + Q;
