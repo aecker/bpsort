@@ -559,7 +559,21 @@ classdef BP < handle
             % greedy search for flips with largest change in posterior
             h = fliplr(self.upsamplingFilter);
             X = greedy(sparse(T, M), DL, A, dDL, s, 1 - s(1), T - s(end) + s(1) - 1, h, wws, wVs);
+            N = sum(X > 0, 1);
+            
+            % remove non-spiking templates
+            if any(~N)
+                X = X(:, N > 0);
+            end
             priors = sum(X > 0, 1) / T;
+            M = numel(priors);
+            
+            % normalize amplitudes
+            normalize = @(x) real(x) / mean(real(x)) + 1i * imag(x);
+            for j = 1 : M
+                i = find(X(:, j));
+                X(i, j) = normalize(X(i, j));
+            end
             
             self.log(true)
         end
@@ -662,12 +676,6 @@ classdef BP < handle
                 X(i, end + 1) = normalize(X(i, j)); %#ok
                 X(i, j) = 0;
                 priors(end + 1) = pj * prior(j, 2); %#ok
-            end
-            
-            % normalize non-splitted clusters
-            for j = setdiff(1 : M, split)
-                i = find(X(:, j));
-                X(i, j) = normalize(X(i, j));
             end
             
             split = ~isempty(split);
