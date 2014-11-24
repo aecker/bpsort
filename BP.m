@@ -582,45 +582,36 @@ classdef BP < handle
         function [U, priors, merged] = mergeTemplates(self, U, priors)
             % Merge templates with similar waveforms.
             %   [W, priors, merged] = bp.mergeTemplates(W, priors) merges
-            %   all templates in W whose maximal cross-correlation is
-            %   greater than bp.mergeThreshold times the squared norm of
-            %   the larger waveform.
+            %   all templates in W whose pattern of peak and trough
+            %   amplitudes across channels are similar (inner product is
+            %   greater than bp.mergeThreshold).
             
             M = size(U, 3);
             self.log(false, 'Merging templates: %d -> ', M)
-            p = self.upsamplingFactor;
-            h = self.upsamplingFilter;
-            W = self.waveforms(U);
-            W = permute(W, [1 2 4 3]);
-            W = reshape(W, [], M);
-            nrm = sum(W .* W, 1);
-            lag = 2;
-            xcp = zeros(p, 2 * lag + 1);
-            merged = false;
-            i = 1;
-            while i < M
-                XC = zeros(1, M - i);
-                for j = i + 1 : M
-                    xc = xcorr(W(:, i), W(:, j), self.upsamplingFilterOrder + lag);
-                    for k = 1 : 2 * lag + 1
-                        xcp(:, k) = xc(2 * lag + 2 - k : end - k + 1)' * h;
+            merged = true;
+            while merged
+                W = self.waveforms(U);
+                b = [min(W); max(W)];
+                b = reshape(permute(b, [1 2 4 3]), [], M);
+                S = (b' * b);
+                S = S ./ bsxfun(@max, diag(S), diag(S)');
+                i = 1;
+                merged = false;
+                while i < M
+                    merge = i + [0, find(S(i, i + 1 : end) > self.mergeThreshold)];
+                    if numel(merge) > 1
+                        Ui = bsxfun(@times, permute(priors(merge), [1 3 2]), U(:, :, merge, :));
+                        U(:, :, i, :) = sum(Ui, 3) / sum(priors(merge));
+                        U(:, :, merge(2 : end), :) = [];
+                        priors(i) = sum(priors(merge));
+                        priors(merge(2 : end)) = [];
+                        S(merge(2 : end), :) = [];
+                        S(:, merge(2 : end)) = [];
+                        M = numel(priors);
+                        merged = true;
                     end
-                    XC(j - i) = max(xcp(:));
+                    i = i + 1;
                 end
-                XC = XC ./ max(nrm(i), nrm(i + 1 : M));
-                merge = i + [0, find(XC > self.mergeThreshold)];
-                if numel(merge) > 1
-                    [~, ndx] = max(priors(merge));
-                    U(:, :, i, :) = U(:, :, merge(ndx), :);
-                    U(:, :, merge(2 : end), :) = [];
-                    priors(i) = sum(priors(merge));
-                    priors(merge(2 : end)) = [];
-                    nrm(i) = nrm(merge(ndx));
-                    nrm(merge(2 : end)) = [];
-                    M = numel(priors);
-                    merged = true;
-                end
-                i = i + 1;
             end
             self.log('%d ', M)
             self.log(true)
