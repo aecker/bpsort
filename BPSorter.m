@@ -91,6 +91,12 @@ classdef BPSorter < BP
         end
         
         
+        function set.BlockSize(self, b)
+            self.BlockSize = b;
+            self.dt = b;
+        end
+        
+        
         function [X, U] = fit(self)
             % Fit model.
             
