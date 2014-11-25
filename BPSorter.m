@@ -129,13 +129,18 @@ classdef BPSorter < BP
                 % compared to previous iteration
                 if numel(priors) <= M || (~split && ~merged)
                     doneSplitMerge = true;
-                else
-                    M = numel(priors);
                 end
                 
                 % prune waveforms and estimate spikes
                 Uw = self.pruneWaveforms(Uw);
                 [X, priors] = self.estimateSpikes(V, Uw, priors);
+                
+                % remove non-spiking templates
+                if any(~priors)
+                    X = X(:, priors > 0);
+                end
+                priors = priors(priors > 0);
+                M = numel(priors);
                 
                 % split templates with bimodal amplitude distribution
                 if ~doneSplitMerge
