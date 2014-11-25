@@ -593,7 +593,7 @@ classdef BP < handle
                 while i < M
                     merge = i + [0, find(S(i, i + 1 : end) > self.mergeThreshold)];
                     if numel(merge) > 1
-                        Ui = bsxfun(@times, permute(priors(merge), [1 3 2]), U(:, :, merge, :));
+                        Ui = bsxfun(@times, permute(full(priors(merge)), [1 3 2]), U(:, :, merge, :));
                         U(:, :, i, :) = sum(Ui, 3) / sum(priors(merge));
                         U(:, :, merge(2 : end), :) = [];
                         priors(i) = sum(priors(merge));
