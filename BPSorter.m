@@ -8,6 +8,7 @@ classdef BPSorter < BP
         ArtifactThresh      % threshold for artifact detection (SD of noise in muV)
         MaxSamples          % max number of samples to use
         HighPass            % highpass cutoff [stop, pass] (Hz)
+        FullIter            % number of full iterations using all data
         
         % properties used for initialization only
         InitChannelOrder    % channel ordering (x|y|xy|yx)
@@ -47,6 +48,7 @@ classdef BPSorter < BP
             p.addOptional('ArtifactThresh', 25)
             p.addOptional('MaxSamples', 2e7);
             p.addOptional('HighPass', [400 600]);
+            p.addOptional('FullIter', 1);
             p.addOptional('Fs', 12000);
             p.addOptional('InitChannelOrder', 'y');
             p.addOptional('InitNumChannels', 5);
@@ -97,7 +99,7 @@ classdef BPSorter < BP
         end
         
         
-        function [X, U] = fit(self)
+        function [X, Uw, priors, temporal, spatial] = fit(self)
             % Fit model.
             
             % initialize on subset of the data using traditional spike
@@ -162,7 +164,8 @@ classdef BPSorter < BP
             Uw = self.orderTemplates(Uw, X, priors, 'yx');
             
             % final run in chunks over entire dataset
-            [X, U] = self.estimateByBlock(Uw, priors, temporal, spatial, driftVarWhitened);
+            [X, Uw] = self.estimateByBlock(Uw, priors, temporal, spatial, driftVarWhitened);
+            priors = sum(X > 0, 1) / size(X, 1);
             
             self.log('\n--\nDone fitting model [%.0fs]\n\n', (now - t) * 24 * 60 * 60)
         end
@@ -392,7 +395,7 @@ classdef BPSorter < BP
         end
         
         
-        function [X, U] = estimateByBlock(self, Uw, priors, temporal, spatial, drift)
+        function [X, Uw] = estimateByBlock(self, Uw, priors, temporal, spatial, drift)
             % Estimate model on full dataset working blockwise
             
             % determine active channels for each neuron
@@ -400,49 +403,58 @@ classdef BPSorter < BP
             
             blockSize = self.BlockSize * self.Fs;
             nBlocks = ceil(self.N / blockSize);
+            if nBlocks > size(Uw, 4) % add waveforms for last (incomplete) block
+                Uw(:, :, :, nBlocks) = Uw(:, :, :, end);
+            end
             M = numel(priors);
             K = self.K;
             
             X = cell(1, nBlocks);
-            Uf = cell(K, nBlocks);
-            P = cell(K, nBlocks);
-            for t = 1 : nBlocks
+            for f = 0 : self.FullIter
                 
-                % read data
-                start = (t - 1) * blockSize;
-                idx = start + (1 : min(self.N - start, blockSize));
-                V = self.matfile.V(idx, :);
-                
-                % whiten data
-                Vw = zeros(size(V));
-                for k = 1 : self.K
-                    Vw(:, k) = conv(V(:, k), temporal(:, k), 'same');
+                Uf = cell(K, nBlocks);
+                P = cell(K, nBlocks);
+                for t = 1 : nBlocks
+                    
+                    % read data
+                    start = (t - 1) * blockSize;
+                    idx = start + (1 : min(self.N - start, blockSize));
+                    V = self.matfile.V(idx, :);
+                    
+                    % whiten data
+                    for k = 1 : self.K
+                        V(:, k) = conv(V(:, k), temporal(:, k), 'same');
+                    end
+                    V = V * spatial;
+                    
+                    % estimate spikes
+                    X{t} = self.estimateSpikes(V, Uw(:, :, :, t), priors);
+                    
+                    % estimate waveforms (forward pass)
+                    if f < self.FullIter
+                        tt = t - 1;
+                        [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X{t}, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)), drift);
+                    end
                 end
-                Vw = Vw * spatial;
                 
-                % estimate spikes
-                X{t} = self.estimateSpikes(Vw, Uw(:, :, :, min(t, end)), priors);
-                
-                % estimate waveforms (forward pass)
-                tt = t - 1;
-                [Uf(:, t), P(:, t)] = self.estimateWaveformsFwdPass(V, X{t}, active, Uf(:, tt(tt > 0)), P(:, tt(tt > 0)), drift);
-            end
-            
-            % Backward pass
-            E = size(Uw, 1);
-            U = zeros(E * M, K, nBlocks);
-            for k = 1 : K
-                a = reshape(repmat(active(k, :), E, 1), [], 1);
-                U(a, k, end) = Uf{k, end};
-                for t = nBlocks - 1 : -1 : 1
-                    Ct = P{k, t} / P{k, t + 1};
-                    U(a, k, t) = Uf{k, t} + Ct * (Uf{k, t + 1} - Uf{k, t});
+                if f < self.FullIter
+                    % Backward pass
+                    E = size(Uw, 1);
+                    U = zeros(E * M, K, nBlocks);
+                    for k = 1 : K
+                        a = reshape(repmat(active(k, :), E, 1), [], 1);
+                        U(a, k, end) = Uf{k, end};
+                        for t = nBlocks - 1 : -1 : 1
+                            Ct = P{k, t} / P{k, t + 1};
+                            U(a, k, t) = Uf{k, t} + Ct * (Uf{k, t + 1} - Uf{k, t});
+                        end
+                    end
+                    
+                    % Re-organize waveforms by cluster
+                    Uw = reshape(U, [E M K nBlocks]);
+                    Uw = permute(Uw, [1 3 2 4]);
                 end
             end
-            
-            % Re-organize waveforms by cluster
-            U = reshape(U, [E M K nBlocks]);
-            U = permute(U, [1 3 2 4]);
             
             % create spike matrix
             [i, j, x] = cellfun(@find, X, 'uni', false);
