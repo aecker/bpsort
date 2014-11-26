@@ -8,6 +8,7 @@ classdef BPSorter < BP
         ArtifactThresh      % threshold for artifact detection (SD of noise in muV)
         MaxSamples          % max number of samples to use
         HighPass            % highpass cutoff [stop, pass] (Hz)
+        SubsetIter          % number of iterations on subset after split & merge
         FullIter            % number of full iterations using all data
         
         % properties used for initialization only
@@ -48,6 +49,7 @@ classdef BPSorter < BP
             p.addOptional('ArtifactThresh', 25)
             p.addOptional('MaxSamples', 2e7);
             p.addOptional('HighPass', [400 600]);
+            p.addOptional('SubsetIter', 1);
             p.addOptional('FullIter', 1);
             p.addOptional('Fs', 12000);
             p.addOptional('InitChannelOrder', 'y');
@@ -121,9 +123,8 @@ classdef BPSorter < BP
             doneSplitMerge = false;
             priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
-            iter = 1;
             M = 0;
-            while i <= iter || ~doneSplitMerge
+            while i <= self.SubsetIter || ~doneSplitMerge
                 
                 % estimate waveforms
                 Uw = self.estimateWaveforms(V, X, subBlockSize, driftVarWhitened);
