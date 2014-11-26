@@ -124,6 +124,7 @@ classdef BPSorter < BP
             priors = sum(X > 0, 1) / size(X, 1);
             i = 0;
             M = 0;
+            a = 1;
             while i <= self.SubsetIter || ~doneSplitMerge
                 
                 % estimate waveforms
@@ -141,8 +142,8 @@ classdef BPSorter < BP
                 end
                 
                 % prune waveforms and estimate spikes
-                Uw = self.pruneWaveforms(Uw);
-                [X, priors] = self.estimateSpikes(V, Uw, priors);
+                Uwp = self.pruneWaveforms(Uw);
+                [X, priors] = self.estimateSpikes(V, Uwp, priors);
                 
                 % remove non-spiking templates
                 if any(~priors)
@@ -150,6 +151,12 @@ classdef BPSorter < BP
                 end
                 priors = priors(priors > 0);
                 M = numel(priors);
+                
+                % save results from iteration
+                if self.Debug
+                    save(fullfile(self.TempDir, sprintf('iter%02d', a)), 'X', 'Uw', 'Uwp', 'self', 'priors', 'doneSplitMerge', 'i');
+                    a = a + 1;
+                end
                 
                 % split templates with bimodal amplitude distribution
                 if ~doneSplitMerge
@@ -162,7 +169,7 @@ classdef BPSorter < BP
             end
             
             % Order templates spatially
-            Uw = self.orderTemplates(Uw, X, priors, 'yx');
+            Uw = self.orderTemplates(Uwp, X, priors, 'yx');
             
             % final run in chunks over entire dataset
             [X, Uw] = self.estimateByBlock(Uw, priors, temporal, spatial, driftVarWhitened);
