@@ -169,7 +169,7 @@ classdef BPSorter < BP
             end
             
             % Order templates spatially
-            Uw = self.orderTemplates(Uwp, X, priors, 'yx');
+            [Uw, ~, priors] = self.orderTemplates(Uwp, X, priors, 'yx');
             
             % final run in chunks over entire dataset
             [X, Uw] = self.estimateByBlock(Uw, priors, temporal, spatial, driftVarWhitened);
