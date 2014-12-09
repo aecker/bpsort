@@ -111,6 +111,7 @@ classdef BPSorter < BP
             
             % fit BP model on subset of the data
             self.log('Starting to fit BP model on subset of the data\n\n')
+            t = now;
             
             % whiten data
             driftVar = self.BlockSize * self.driftRate;
