@@ -6,8 +6,7 @@ file = '/kyb/agmbrecordings/Dennis/2014-10-03_13-39-12/2014-10-03_13-39-19/Elect
 
 %% fit model
 br = baseReader(file, 's1c*');
-ndx = strfind(file, '/');
-temp = ['/kyb/agmbrecordings/tmp/' file(ndx(end - 3) : ndx(end - 1))];
+temp = fullfile(fileparts(fileparts(file)), 'bpsort');
 
 bps = BPSorter('V1x32-Poly2', ...
     'TempDir', temp, ...
