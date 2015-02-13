@@ -228,6 +228,7 @@ classdef BPSorter < BP
                     fprintf('%d ', i)
                 end
                 V = toMuV(br, resample(pr(i), p, q));
+                V = bsxfun(@minus, V, mean(V, 2)); % subtract common reference
                 if i == nBlocks
                     V = V(1 : new.lastBlockSize, :); % crop to multiple of artifact block size
                 end
