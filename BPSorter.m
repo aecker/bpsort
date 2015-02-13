@@ -13,7 +13,8 @@ classdef BPSorter < BP
         
         % properties used for initialization only
         InitChannelOrder    % channel ordering (x|y|xy|yx)
-        InitNumChannels     % number of channels to group
+        InitChannelGroupSize     % number of channels to group
+        InitChannelGroupStride   % stride for channel grouping
         InitDetectThresh    % multiple of noise SD used for spike detection
         InitExtractWin      % window used for extracting waveforms
         InitNumPC           % number of PCs to keep per channel for sorting
@@ -53,7 +54,8 @@ classdef BPSorter < BP
             p.addOptional('FullIter', 1);
             p.addOptional('Fs', 12000);
             p.addOptional('InitChannelOrder', 'y');
-            p.addOptional('InitNumChannels', 5);
+            p.addOptional('InitChannelGroupSize', 8);
+            p.addOptional('InitChannelGroupStride', 4);
             p.addOptional('InitDetectThresh', 5);
             p.addOptional('InitExtractWin', -8 : 19);
             p.addOptional('InitNumPC', 3);
@@ -276,8 +278,9 @@ classdef BPSorter < BP
             
             % Create channel groups
             channels = self.layout.channelOrder(self.InitChannelOrder);
-            num = self.InitNumChannels;
-            idx = bsxfun(@plus, 1 : num, (0 : numel(channels) - num)');
+            num = self.InitChannelGroupSize;
+            stride = self.InitChannelGroupStride;
+            idx = bsxfun(@plus, 1 : num, (0 : stride : numel(channels) - num)');
             groups = channels(idx);
             nGroups = size(groups, 1);
             
@@ -292,6 +295,8 @@ classdef BPSorter < BP
                 'CovRidge', self.InitSortCovRidge);
             
             % detect and sort spikes in groups
+            modelFile = fullfile(self.TempDir, 'models');
+%             load(modelFile, 'models')
             models(nGroups) = m;
             parfor i = 1 : nGroups
                 Vi = V(:, groups(i, :));
@@ -299,6 +304,7 @@ classdef BPSorter < BP
                 b = extractFeatures(w, self.InitNumPC);
                 models(i) = m.fit(b, t);
             end
+            save(modelFile, 'models')
             
             % remove duplicate clusters that were created above because the
             % channel groups overlap
@@ -336,8 +342,9 @@ classdef BPSorter < BP
             %   from the cluster with the larger waveform.
             
             % find all clusters having maximum energy on the center channel
-            K = self.InitNumChannels;
-            center = (K + 1) / 2;
+            K = self.InitChannelGroupSize;
+            S = self.InitChannelGroupStride;
+            center = ceil((K - S) / 2) + (1 : S);
             q = self.InitNumPC;
             nModels = numel(models);
             spikes = {};
@@ -347,10 +354,10 @@ classdef BPSorter < BP
                 model = models(i);
                 a = model.cluster();
                 [~, Ndt, M] = size(model.mu);
-                for j = 1 : M;
+                for j = 1 : M
                     nrm = sqrt(sum(sum(reshape(model.mu(:, :, j), [q K Ndt]), 1) .^ 2, 3));
                     [m, idx] = max(nrm);
-                    if idx == center || (i == 1 && idx < center) || (i == nModels && idx > center)
+                    if ismember(idx, center) || (i == 1 && idx < center(1)) || (i == nModels && idx > center(end))
                         spikes{end + 1} = round(model.t(a == j) * self.Fs / 1000); %#ok<AGROW>
                         clusters{end + 1} = repmat(numel(spikes), size(spikes{end})); %#ok<AGROW>
                         mag(end + 1) = m; %#ok<AGROW>
