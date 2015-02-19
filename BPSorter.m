@@ -261,6 +261,7 @@ classdef BPSorter < BP
             % Initialize model
             
             % load subset of the data
+            fprintf('  Loading data...\n')
             nskip = ceil(self.N / self.MaxSamples);
             if nskip == 1
                 subBlockSize = self.BlockSize * self.Fs;
@@ -277,35 +278,47 @@ classdef BPSorter < BP
                 end
             end
             
-            % Create channel groups
-            channels = self.layout.channelOrder(self.InitChannelOrder);
-            num = self.InitChannelGroupSize;
-            stride = self.InitChannelGroupStride;
-            idx = bsxfun(@plus, 1 : num, (0 : stride : numel(channels) - num)');
-            groups = channels(idx);
-            nGroups = size(groups, 1);
+            % load initialization files
+            modelFile = fullfile(self.TempDir, ...
+                sprintf('models%dstride%d.mat', self.InitChannelGroupSize, self.InitChannelGroupStride));
+            if exist(modelFile, 'file')
+                fprintf('  Using existing initialization.\n')
+                load(modelFile, 'models')
+            else
             
-            % Spike sorter
-            %   dt needs to be adjusted since we're skipping a fraction of the data
-            %   drift rate is per ms, so it needs to be adjusted as well
-            m = MoKsm('DTmu', self.BlockSize / nskip * 1000, ...
-                'DriftRate', self.InitSortDriftRate * nskip, ...
-                'ClusterCost', self.InitSortClusterCost, ...
-                'Df', self.InitSortDf, ...
-                'Tolerance', self.InitSortTolerance, ...
-                'CovRidge', self.InitSortCovRidge);
-            
-            % detect and sort spikes in groups
-            modelFile = fullfile(self.TempDir, 'models');
-%             load(modelFile, 'models')
-            models(nGroups) = m;
-            parfor i = 1 : nGroups
-                Vi = V(:, groups(i, :));
-                [t, w] = detectSpikes(Vi, self.Fs, self.InitDetectThresh, self.InitExtractWin);
-                b = extractFeatures(w, self.InitNumPC);
-                models(i) = m.fit(b, t);
+                % Create channel groups
+                channels = self.layout.channelOrder(self.InitChannelOrder);
+                num = self.InitChannelGroupSize;
+                stride = self.InitChannelGroupStride;
+                idx = bsxfun(@plus, 1 : num, (0 : stride : numel(channels) - num)');
+                groups = channels(idx);
+                nGroups = size(groups, 1);
+                
+                % Spike sorter
+                %   dt needs to be adjusted since we're skipping a fraction of the data
+                %   drift rate is per ms, so it needs to be adjusted as well
+                m = MoKsm('DTmu', self.BlockSize / nskip * 1000, ...
+                    'DriftRate', self.InitSortDriftRate * nskip, ...
+                    'ClusterCost', self.InitSortClusterCost, ...
+                    'Df', self.InitSortDf, ...
+                    'Tolerance', self.InitSortTolerance, ...
+                    'CovRidge', self.InitSortCovRidge);
+                
+                % detect and sort spikes in groups
+                models(nGroups) = m;
+                tt = struct('w', {cell(1, num)}, 't', cell(1, nGroups));
+                parfor i = 1 : nGroups
+                    Vi = V(:, groups(i, :)); %#ok<*PFBNS>
+                    [t, w] = detectSpikes(Vi, self.Fs, self.InitDetectThresh, self.InitExtractWin);
+                    b = extractFeatures(w, self.InitNumPC);
+                    models(i) = m.fit(b, t);
+                    for j = 1 : num
+                        tt(i).w{j} = w(:, :, j); %#ok
+                    end
+                    tt(i).t = t;
+                end
+                save(modelFile, 'models', 'tt')
             end
-            save(modelFile, 'models')
             
             % remove duplicate clusters that were created above because the
             % channel groups overlap
