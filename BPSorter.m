@@ -182,7 +182,7 @@ classdef BPSorter < BP
         end
         
         
-        function readData(self, br)
+        function createTempDataFile(self, br)
             % Read raw data, downsample and store in local temp file
             
             % create memory-mapped Matlab file
@@ -262,21 +262,7 @@ classdef BPSorter < BP
             
             % load subset of the data
             fprintf('  Loading data...\n')
-            nskip = ceil(self.N / self.MaxSamples);
-            if nskip == 1
-                subBlockSize = self.BlockSize * self.Fs;
-                V = self.matfile.V; % load full dataset
-            else
-                blockSize = self.BlockSize * self.Fs;
-                nBlocks = fix(self.N / blockSize);
-                subBlockSize = round(blockSize / nskip);
-                V = zeros(nBlocks * subBlockSize, size(self.matfile, 'V', 2));
-                for i = 1 : nBlocks
-                    idxFile = blockSize * (i - 1) + (1 : subBlockSize);
-                    idxV = subBlockSize * (i - 1) + (1 : subBlockSize);
-                    V(idxV, :) = self.matfile.V(idxFile, :);
-                end
-            end
+            [V, subBlockSize] = self.loadTrainingData();
             
             % load initialization files
             modelFile = fullfile(self.TempDir, ...
@@ -326,6 +312,25 @@ classdef BPSorter < BP
         end
         
         
+        function [V, subBlockSize] = loadTrainingData(self)
+            nskip = ceil(self.N / self.MaxSamples);
+            if nskip == 1
+                subBlockSize = self.BlockSize * self.Fs;
+                V = self.matfile.V; % load full dataset
+            else
+                blockSize = self.BlockSize * self.Fs;
+                nBlocks = fix(self.N / blockSize);
+                subBlockSize = round(blockSize / nskip);
+                V = zeros(nBlocks * subBlockSize, size(self.matfile, 'V', 2));
+                for i = 1 : nBlocks
+                    idxFile = blockSize * (i - 1) + (1 : subBlockSize);
+                    idxV = subBlockSize * (i - 1) + (1 : subBlockSize);
+                    V(idxV, :) = self.matfile.V(idxFile, :);
+                end
+            end
+        end
+        
+        
         function N = get.N(self)
             if isempty(self.N)
                 self.N = size(self.matfile, 'V', 1);
@@ -336,7 +341,7 @@ classdef BPSorter < BP
         
         function m = get.matfile(self)
             if isempty(self.matfile)
-                error('Temporary data file not initialized. Run self.readData() first!')
+                error('Temporary data file not initialized. Run self.createTempDataFile() first!')
             end
             m = self.matfile;
         end
