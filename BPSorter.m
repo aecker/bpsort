@@ -103,13 +103,21 @@ classdef BPSorter < BP
         end
         
         
-        function [X, Uw, priors, temporal, spatial] = fit(self)
+        function [X, Uw, priors, temporal, spatial] = fit(self, V, X)
             % Fit model.
+            
+            % read training data if necessary
+            if ~exist('V', 'var') || isempty(V)
+                self.log(false, 'Loading training data...\n')
+                [V, subBlockSize] = self.loadTrainingData();
+            end
             
             % initialize on subset of the data using traditional spike
             % detection + sorting algorithm
-            self.log(false, 'Initializing model using Mixture of Kalman filter model...\n')
-            [V, X, subBlockSize] = self.initialize();
+            if ~exist(X, 'var') || isempty(X)
+                self.log(false, 'Initializing model using Mixture of Kalman filter model...\n')
+                X = self.initialize(V);
+            end
             
             % fit BP model on subset of the data
             self.log('Starting to fit BP model on subset of the data\n\n')
@@ -257,12 +265,8 @@ classdef BPSorter < BP
         end
         
         
-        function [V, X, subBlockSize] = initialize(self)
-            % Initialize model
-            
-            % load subset of the data
-            fprintf('  Loading data...\n')
-            [V, subBlockSize] = self.loadTrainingData();
+        function X = initialize(self, V)
+            % Initialize model using Mixture of Kalman filter clustering
             
             % load initialization files
             modelFile = fullfile(self.TempDir, ...
